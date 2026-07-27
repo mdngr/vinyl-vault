@@ -303,12 +303,8 @@ function updateStats() {
 function renderVinyls(filterText = '') {
     grid.innerHTML = '';
     
-    // Si l'utilisateur N'EST PAS connecté, on active le mode défilement horizontal
-    if (!currentUser) {
-        grid.classList.add('read-only-row');
-    } else {
-        grid.classList.remove('read-only-row');
-    }
+    // On s'assure d'utiliser la classe CSS standard
+    grid.className = 'vinyl-grid';
 
     const filtered = vinyls.filter(v => 
         v.title.toLowerCase().includes(filterText.toLowerCase()) ||
@@ -326,7 +322,6 @@ function renderVinyls(filterText = '') {
         const card = document.createElement('div');
         card.className = 'vinyl-card';
 
-        // Bouton de suppression affiché uniquement si connecté
         const deleteBtnHTML = currentUser 
             ? `<button class="btn-delete" onclick="deleteVinyl(${vinyl.id})">✕</button>` 
             : '';
