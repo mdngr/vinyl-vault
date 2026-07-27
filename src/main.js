@@ -303,6 +303,13 @@ function updateStats() {
 function renderVinyls(filterText = '') {
     grid.innerHTML = '';
     
+    // Si l'utilisateur N'EST PAS connecté, on active le mode défilement horizontal
+    if (!currentUser) {
+        grid.classList.add('read-only-row');
+    } else {
+        grid.classList.remove('read-only-row');
+    }
+
     const filtered = vinyls.filter(v => 
         v.title.toLowerCase().includes(filterText.toLowerCase()) ||
         v.artist.toLowerCase().includes(filterText.toLowerCase()) ||
