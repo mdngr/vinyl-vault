@@ -8,7 +8,9 @@ const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN;
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 let vinyls = [];
 let html5QrCode = null;
+let currentUser = null;
 
+// Éléments DOM
 const grid = document.getElementById('vinyl-grid');
 const searchInput = document.getElementById('search-input');
 const discogsSearchInput = document.getElementById('discogs-search');
@@ -18,6 +20,67 @@ const btnCloseScanner = document.getElementById('btn-close-scanner');
 const scannerModal = document.getElementById('scanner-modal');
 const resultsContainer = document.getElementById('discogs-results');
 const stats = document.getElementById('stats');
+
+const btnAuth = document.getElementById('btn-auth');
+const loginModal = document.getElementById('login-modal');
+const btnCloseLogin = document.getElementById('btn-close-login');
+const loginForm = document.getElementById('login-form');
+const adminPanel = document.getElementById('admin-panel');
+
+// --- Authentification Supabase ---
+
+async function checkUserSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    updateUIForAuth(session?.user || null);
+
+    // Écouter les changements d'état de connexion
+    supabase.auth.onAuthStateChange((_event, session) => {
+        updateUIForAuth(session?.user || null);
+    });
+}
+
+function updateUIForAuth(user) {
+    currentUser = user;
+    if (user) {
+        btnAuth.textContent = '🔓 Déconnexion';
+        btnAuth.className = 'btn btn-logout';
+        adminPanel.style.display = 'block';
+    } else {
+        btnAuth.textContent = '🔒 Connexion Admin';
+        btnAuth.className = 'btn btn-login';
+        adminPanel.style.display = 'none';
+    }
+    renderVinyls(searchInput.value);
+}
+
+btnAuth.addEventListener('click', async () => {
+    if (currentUser) {
+        await supabase.auth.signOut();
+    } else {
+        loginModal.style.display = 'flex';
+    }
+});
+
+btnCloseLogin.addEventListener('click', () => {
+    loginModal.style.display = 'none';
+});
+
+loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+        alert("Échec de connexion : " + error.message);
+    } else {
+        loginModal.style.display = 'none';
+        loginForm.reset();
+    }
+});
+
+// --- Base de données ---
 
 async function fetchVinyls() {
     const { data, error } = await supabase
@@ -45,6 +108,11 @@ async function fetchVinyls() {
 }
 
 async function addVinyl(vinyl) {
+    if (!currentUser) {
+        alert("Vous devez être connecté pour ajouter des vinyles.");
+        return;
+    }
+
     const { error } = await supabase
         .from('vinyls')
         .insert([{
@@ -68,6 +136,7 @@ async function addVinyl(vinyl) {
 }
 
 window.deleteVinyl = async function(id) {
+    if (!currentUser) return;
     if (!confirm("Supprimer ce vinyle ?")) return;
 
     const { error } = await supabase
@@ -85,7 +154,7 @@ window.deleteVinyl = async function(id) {
     updateStats();
 };
 
-// --- Recherche Discogs ---
+// --- Discogs & Scanner ---
 
 async function searchDiscogs(barcodeQuery = null) {
     const query = barcodeQuery || discogsSearchInput.value.trim();
@@ -113,7 +182,7 @@ function displayDiscogsResults(results) {
     resultsContainer.innerHTML = '';
 
     if (!results || results.length === 0) {
-        resultsContainer.innerHTML = '<p class="status-text">Aucun vinyle trouvé pour ce code-barres.</p>';
+        resultsContainer.innerHTML = '<p class="status-text">Aucun vinyle trouvé.</p>';
         return;
     }
 
@@ -154,12 +223,9 @@ function displayDiscogsResults(results) {
     });
 }
 
-// --- Scanner de Code-Barres Optimisé ---
-
 async function startScanner() {
     scannerModal.style.display = 'flex';
 
-    // Force la détection spécifique des formats de codes-barres (EAN-13, EAN-8, UPC)
     const formatsSupported = [
         Html5QrcodeSupportedFormats.EAN_13,
         Html5QrcodeSupportedFormats.EAN_8,
@@ -170,23 +236,22 @@ async function startScanner() {
 
     html5QrCode = new Html5Qrcode("reader", { formatsToSupport: formatsSupported });
 
-    // Calcul dynamique de la zone de scan (rectangulaire, adaptée aux codes-barres)
     const qrboxFunction = function(viewfinderWidth, viewfinderHeight) {
         let minEdgePercentage = 0.8; 
         let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
         let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
         return {
             width: qrboxSize,
-            height: Math.floor(qrboxSize / 2) // Rectangle allongé
+            height: Math.floor(qrboxSize / 2)
         };
     };
 
     const config = {
-        fps: 15, // Fréquence de capture augmentée
+        fps: 15,
         qrbox: qrboxFunction,
         videoConstraints: {
             facingMode: { exact: "environment" },
-            width: { min: 640, ideal: 1280, max: 1920 }, // Force une bonne résolution HD
+            width: { min: 640, ideal: 1280, max: 1920 },
             height: { min: 480, ideal: 720, max: 1080 }
         }
     };
@@ -196,17 +261,14 @@ async function startScanner() {
             { facingMode: "environment" },
             config,
             (decodedText) => {
-                // Succès du scan
                 if (navigator.vibrate) navigator.vibrate(200);
                 stopScanner();
                 discogsSearchInput.value = decodedText;
                 searchDiscogs(decodedText);
             },
-            () => { /* Frame ignorée */ }
+            () => {}
         );
     } catch (err) {
-        // Repli si la caméra arrière spécifique n'est pas trouvée
-        console.warn("Échec configuration avancée, tentative en mode simple...", err);
         try {
             await html5QrCode.start(
                 { facingMode: "environment" },
@@ -256,8 +318,14 @@ function renderVinyls(filterText = '') {
         const defaultCover = 'https://via.placeholder.com/200x200/2a2a2a/ffffff?text=Pas+d%27image';
         const card = document.createElement('div');
         card.className = 'vinyl-card';
+
+        // Bouton de suppression affiché uniquement si connecté
+        const deleteBtnHTML = currentUser 
+            ? `<button class="btn-delete" onclick="deleteVinyl(${vinyl.id})">✕</button>` 
+            : '';
+
         card.innerHTML = `
-            <button class="btn-delete" onclick="deleteVinyl(${vinyl.id})">✕</button>
+            ${deleteBtnHTML}
             <img class="cover-img" src="${vinyl.cover || defaultCover}" alt="${vinyl.title}" onerror="this.src='${defaultCover}'">
             <div class="card-body">
                 <div>
@@ -271,9 +339,12 @@ function renderVinyls(filterText = '') {
     });
 }
 
+// Événements
 btnSearch.addEventListener('click', () => searchDiscogs());
 btnScan.addEventListener('click', startScanner);
 btnCloseScanner.addEventListener('click', stopScanner);
 searchInput.addEventListener('input', (e) => renderVinyls(e.target.value));
 
+// Démarrage
+checkUserSession();
 fetchVinyls();
