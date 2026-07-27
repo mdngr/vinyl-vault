@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -95,7 +95,6 @@ async function searchDiscogs(barcodeQuery = null) {
     resultsContainer.innerHTML = '<p class="status-text">Recherche sur Discogs...</p>';
 
     try {
-        // Si c'est un code-barres (uniquement des chiffres), on utilise le filtre barcode de Discogs
         const isBarcode = /^\d+$/.test(query);
         const searchParam = isBarcode ? `barcode=${encodeURIComponent(query)}` : `q=${encodeURIComponent(query)}`;
         const url = `https://api.discogs.com/database/search?${searchParam}&type=release&format=Vinyl&token=${DISCOGS_TOKEN}&per_page=6`;
@@ -155,34 +154,75 @@ function displayDiscogsResults(results) {
     });
 }
 
-// --- Scanner de Code-Barres ---
+// --- Scanner de Code-Barres Optimisé ---
 
 async function startScanner() {
     scannerModal.style.display = 'flex';
-    html5QrCode = new Html5Qrcode("reader");
+
+    // Force la détection spécifique des formats de codes-barres (EAN-13, EAN-8, UPC)
+    const formatsSupported = [
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128
+    ];
+
+    html5QrCode = new Html5Qrcode("reader", { formatsToSupport: formatsSupported });
+
+    // Calcul dynamique de la zone de scan (rectangulaire, adaptée aux codes-barres)
+    const qrboxFunction = function(viewfinderWidth, viewfinderHeight) {
+        let minEdgePercentage = 0.8; 
+        let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+        let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
+        return {
+            width: qrboxSize,
+            height: Math.floor(qrboxSize / 2) // Rectangle allongé
+        };
+    };
 
     const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 150 },
-        aspectRatio: 1.0
+        fps: 15, // Fréquence de capture augmentée
+        qrbox: qrboxFunction,
+        videoConstraints: {
+            facingMode: { exact: "environment" },
+            width: { min: 640, ideal: 1280, max: 1920 }, // Force une bonne résolution HD
+            height: { min: 480, ideal: 720, max: 1080 }
+        }
     };
 
     try {
         await html5QrCode.start(
-            { facingMode: "environment" }, // Utilise la caméra arrière du smartphone
+            { facingMode: "environment" },
             config,
             (decodedText) => {
                 // Succès du scan
-                if (navigator.vibrate) navigator.vibrate(200); // Retour haptique sur mobile
+                if (navigator.vibrate) navigator.vibrate(200);
                 stopScanner();
                 discogsSearchInput.value = decodedText;
                 searchDiscogs(decodedText);
             },
-            () => { /* Ignorer les erreurs de frame non détectées */ }
+            () => { /* Frame ignorée */ }
         );
     } catch (err) {
-        alert("Impossible d'accéder à la caméra : " + err);
-        stopScanner();
+        // Repli si la caméra arrière spécifique n'est pas trouvée
+        console.warn("Échec configuration avancée, tentative en mode simple...", err);
+        try {
+            await html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 280, height: 140 } },
+                (decodedText) => {
+                    if (navigator.vibrate) navigator.vibrate(200);
+                    stopScanner();
+                    discogsSearchInput.value = decodedText;
+                    searchDiscogs(decodedText);
+                },
+                () => {}
+            );
+        } catch (fallbackErr) {
+            alert("Erreur caméra : " + fallbackErr);
+            stopScanner();
+        }
     }
 }
 
@@ -231,7 +271,6 @@ function renderVinyls(filterText = '') {
     });
 }
 
-// Événements
 btnSearch.addEventListener('click', () => searchDiscogs());
 btnScan.addEventListener('click', startScanner);
 btnCloseScanner.addEventListener('click', stopScanner);
