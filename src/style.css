@@ -3,6 +3,7 @@
   --card-bg: #1e1e1e;
   --accent: #3b82f6;
   --accent-discogs: #ff5500;
+  --accent-scan: #10b981;
   --text: #ffffff;
   --text-secondary: #aaaaaa;
 }
@@ -76,6 +77,12 @@ input {
   box-sizing: border-box;
 }
 
+.btn-group {
+  display: flex;
+  gap: 10px;
+  flex-direction: column;
+}
+
 .btn {
   width: 100%;
   padding: 12px;
@@ -93,6 +100,10 @@ input {
 
 .btn-discogs {
   background-color: var(--accent-discogs);
+}
+
+.btn-scan {
+  background-color: var(--accent-scan);
 }
 
 .discogs-results {
@@ -223,4 +234,67 @@ input {
 .empty-message {
   color: var(--text-secondary);
   grid-column: 1 / -1;
+}
+
+/* Modal Scanner */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 15px;
+  box-sizing: border-box;
+}
+
+.modal-content {
+  background: var(--card-bg);
+  padding: 20px;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 500px;
+  box-sizing: border-box;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: var(--accent-scan);
+}
+
+.btn-close {
+  background: #333;
+  border: none;
+  color: white;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#reader {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.scan-instruction {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-top: 15px;
+  margin-bottom: 0;
 }

@@ -15,13 +15,17 @@
     </header>
 
     <div class="main-layout">
-        <!-- Recherche Discogs -->
+        <!-- Recherche Discogs & Scan -->
         <div class="panel">
             <h3 class="panel-title">Rechercher sur Discogs</h3>
             <div class="form-group">
-                <input type="text" id="discogs-search" placeholder="Artiste, album...">
+                <input type="text" id="discogs-search" placeholder="Artiste, album, code-barres...">
             </div>
-            <button class="btn btn-discogs" id="btn-search">🔍 Chercher sur Discogs</button>
+            
+            <div class="btn-group">
+                <button class="btn btn-discogs" id="btn-search">🔍 Chercher</button>
+                <button class="btn btn-scan" id="btn-scan">📷 Scanner Code-Barres</button>
+            </div>
 
             <div id="discogs-results" class="discogs-results" style="display: none;"></div>
         </div>
@@ -33,6 +37,18 @@
             </div>
             <div class="vinyl-grid" id="vinyl-grid"></div>
         </div>
+    </div>
+</div>
+
+<!-- Modal Scanner Caméra -->
+<div id="scanner-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>📷 Scanner le vinyle</h3>
+            <button id="btn-close-scanner" class="btn-close">✕</button>
+        </div>
+        <div id="reader"></div>
+        <p class="scan-instruction">Place le code-barres au dos du vinyle devant la caméra.</p>
     </div>
 </div>
 

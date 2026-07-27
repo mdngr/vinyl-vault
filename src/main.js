@@ -1,22 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
+import { Html5Qrcode } from 'html5-qrcode';
 
-// Récupération des variables d'environnement
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 let vinyls = [];
+let html5QrCode = null;
 
-// Éléments DOM
 const grid = document.getElementById('vinyl-grid');
 const searchInput = document.getElementById('search-input');
 const discogsSearchInput = document.getElementById('discogs-search');
 const btnSearch = document.getElementById('btn-search');
+const btnScan = document.getElementById('btn-scan');
+const btnCloseScanner = document.getElementById('btn-close-scanner');
+const scannerModal = document.getElementById('scanner-modal');
 const resultsContainer = document.getElementById('discogs-results');
 const stats = document.getElementById('stats');
 
-// Charger les vinyles
 async function fetchVinyls() {
     const { data, error } = await supabase
         .from('vinyls')
@@ -42,7 +44,6 @@ async function fetchVinyls() {
     updateStats();
 }
 
-// Ajouter un vinyle
 async function addVinyl(vinyl) {
     const { error } = await supabase
         .from('vinyls')
@@ -66,7 +67,6 @@ async function addVinyl(vinyl) {
     updateStats();
 }
 
-// Supprimer un vinyle
 window.deleteVinyl = async function(id) {
     if (!confirm("Supprimer ce vinyle ?")) return;
 
@@ -85,23 +85,28 @@ window.deleteVinyl = async function(id) {
     updateStats();
 };
 
-// Recherche Discogs
-async function searchDiscogs() {
-    const query = discogsSearchInput.value.trim();
+// --- Recherche Discogs ---
+
+async function searchDiscogs(barcodeQuery = null) {
+    const query = barcodeQuery || discogsSearchInput.value.trim();
     if (!query) return;
 
     resultsContainer.style.display = 'flex';
-    resultsContainer.innerHTML = '<p style="color:var(--text-secondary); font-size:0.85rem;">Recherche...</p>';
+    resultsContainer.innerHTML = '<p class="status-text">Recherche sur Discogs...</p>';
 
     try {
-        const url = `https://api.discogs.com/database/search?q=${encodeURIComponent(query)}&type=release&format=Vinyl&token=${DISCOGS_TOKEN}&per_page=6`;
+        // Si c'est un code-barres (uniquement des chiffres), on utilise le filtre barcode de Discogs
+        const isBarcode = /^\d+$/.test(query);
+        const searchParam = isBarcode ? `barcode=${encodeURIComponent(query)}` : `q=${encodeURIComponent(query)}`;
+        const url = `https://api.discogs.com/database/search?${searchParam}&type=release&format=Vinyl&token=${DISCOGS_TOKEN}&per_page=6`;
+
         const response = await fetch(url);
         if (!response.ok) throw new Error("Erreur Discogs");
 
         const data = await response.json();
         displayDiscogsResults(data.results);
     } catch (error) {
-        resultsContainer.innerHTML = `<p style="color:#ff5555; font-size:0.85rem;">Erreur : ${error.message}</p>`;
+        resultsContainer.innerHTML = `<p class="error-text">Erreur : ${error.message}</p>`;
     }
 }
 
@@ -109,7 +114,7 @@ function displayDiscogsResults(results) {
     resultsContainer.innerHTML = '';
 
     if (!results || results.length === 0) {
-        resultsContainer.innerHTML = '<p style="color:var(--text-secondary); font-size:0.85rem;">Aucun résultat.</p>';
+        resultsContainer.innerHTML = '<p class="status-text">Aucun vinyle trouvé pour ce code-barres.</p>';
         return;
     }
 
@@ -150,6 +155,45 @@ function displayDiscogsResults(results) {
     });
 }
 
+// --- Scanner de Code-Barres ---
+
+async function startScanner() {
+    scannerModal.style.display = 'flex';
+    html5QrCode = new Html5Qrcode("reader");
+
+    const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 150 },
+        aspectRatio: 1.0
+    };
+
+    try {
+        await html5QrCode.start(
+            { facingMode: "environment" }, // Utilise la caméra arrière du smartphone
+            config,
+            (decodedText) => {
+                // Succès du scan
+                if (navigator.vibrate) navigator.vibrate(200); // Retour haptique sur mobile
+                stopScanner();
+                discogsSearchInput.value = decodedText;
+                searchDiscogs(decodedText);
+            },
+            () => { /* Ignorer les erreurs de frame non détectées */ }
+        );
+    } catch (err) {
+        alert("Impossible d'accéder à la caméra : " + err);
+        stopScanner();
+    }
+}
+
+async function stopScanner() {
+    if (html5QrCode && html5QrCode.isScanning) {
+        await html5QrCode.stop();
+        html5QrCode.clear();
+    }
+    scannerModal.style.display = 'none';
+}
+
 function updateStats() {
     stats.textContent = `${vinyls.length} vinyle(s)`;
 }
@@ -164,7 +208,7 @@ function renderVinyls(filterText = '') {
     );
 
     if (filtered.length === 0) {
-        grid.innerHTML = '<p style="color: var(--text-secondary); grid-column: 1/-1;">Aucun vinyle affiché.</p>';
+        grid.innerHTML = '<p class="empty-message">Aucun vinyle affiché.</p>';
         return;
     }
 
@@ -188,8 +232,9 @@ function renderVinyls(filterText = '') {
 }
 
 // Événements
-btnSearch.addEventListener('click', searchDiscogs);
+btnSearch.addEventListener('click', () => searchDiscogs());
+btnScan.addEventListener('click', startScanner);
+btnCloseScanner.addEventListener('click', stopScanner);
 searchInput.addEventListener('input', (e) => renderVinyls(e.target.value));
 
-// Démarrage
 fetchVinyls();
