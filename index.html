@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vinyl Vault</title>
+    <title>Culture Vault</title>
     <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
@@ -11,32 +11,46 @@
 <div class="container">
     <header>
         <div class="header-left">
-            <h1>💿 Vinyl Vault</h1>
-            <div id="stats" class="stats-count">0 vinyle(s)</div>
+            <h1>🏛️ Culture Vault</h1>
+            <div id="stats" class="stats-count">0 élément(s)</div>
         </div>
         <div class="header-right">
             <button id="btn-auth" class="btn btn-login">🔒 Connexion Admin</button>
         </div>
     </header>
 
-    <!-- Barre de recherche Full Width -->
-    <div class="search-bar">
-        <input type="text" id="search-input" placeholder="🔍 Filtrer ma collection...">
+    <!-- Filtres par catégorie & recherche -->
+    <div class="controls-bar">
+        <div class="category-tabs">
+            <button class="tab-btn active" data-type="all">Tous</button>
+            <button class="tab-btn" data-type="vinyl">💿 Vinyles</button>
+            <button class="tab-btn" data-type="book">📚 Livres & BDs</button>
+            <button class="tab-btn" data-type="movie">🎬 DVDs / Blu-ray</button>
+        </div>
+        <div class="search-bar">
+            <input type="text" id="search-input" placeholder="🔍 Filtrer ma bibliothèque...">
+        </div>
     </div>
 
-    <!-- Bloc d'administration (masqué par défaut) -->
+    <!-- Bloc d'administration / Ajout -->
     <div class="panel" id="admin-panel" style="display: none;">
-        <h3 class="panel-title">Rechercher & Ajouter un vinyle</h3>
-        <div class="form-group">
-            <input type="text" id="discogs-search" placeholder="Artiste, album, code-barres...">
+        <h3 class="panel-title">Ajouter une œuvre</h3>
+        
+        <div class="form-row">
+            <select id="media-type-select">
+                <option value="vinyl">💿 Vinyle (Discogs)</option>
+                <option value="book">📚 Livre / BD (Open Library & Google Books)</option>
+                <option value="movie">🎬 DVD / Blu-Ray (TMDB)</option>
+            </select>
+            <input type="text" id="api-search-input" placeholder="Titre, auteur, code-barres (EAN/ISBN)...">
         </div>
         
         <div class="btn-group">
-            <button class="btn btn-discogs" id="btn-search">🔍 Chercher sur Discogs</button>
+            <button class="btn btn-primary" id="btn-search">🔍 Rechercher</button>
             <button class="btn btn-scan" id="btn-scan">📷 Scanner Code-Barres</button>
         </div>
 
-        <div id="discogs-results" class="discogs-results" style="display: none;"></div>
+        <div id="api-results" class="discogs-results" style="display: none;"></div>
     </div>
 
     <!-- Grille Masonry -->
@@ -59,7 +73,7 @@
                 <label for="login-password">Mot de passe</label>
                 <input type="password" id="login-password" required placeholder="••••••••">
             </div>
-            <button type="submit" class="btn btn-discogs">Se connecter</button>
+            <button type="submit" class="btn btn-primary">Se connecter</button>
         </form>
     </div>
 </div>
@@ -68,11 +82,11 @@
 <div id="scanner-modal" class="modal" style="display: none;">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>📷 Scanner le vinyle</h3>
+            <h3>📷 Scanner le code-barres</h3>
             <button id="btn-close-scanner" class="btn-close">✕</button>
         </div>
         <div id="reader"></div>
-        <p class="scan-instruction">Place le code-barres au dos du vinyle devant la caméra.</p>
+        <p class="scan-instruction">Place le code-barres EAN / ISBN dans le rectangle.</p>
     </div>
 </div>
 
