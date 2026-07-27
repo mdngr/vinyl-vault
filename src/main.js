@@ -178,39 +178,78 @@ async function searchDiscogs(query) {
 }
 
 // 2. Livres & BDs (Open Library & Google Books API)
+// 2. Livres & BDs (Google Books API + Open Library Fallback)
 async function searchBooks(query) {
     const isIsbn = /^\d+$/.test(query);
-    
-    if (isIsbn) {
-        // Recherche prioritaire par ISBN via Open Library
-        const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${query}&format=json&jscmd=data`);
+    const results = [];
+
+    try {
+        // A. Tentative prioritaire avec Google Books
+        const googleQuery = isIsbn ? `isbn:${query}` : encodeURIComponent(query);
+        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${googleQuery}&maxResults=8`);
         const data = await res.json();
-        const bookKey = `ISBN:${query}`;
-        if (data[bookKey]) {
-            const b = data[bookKey];
-            return [{
-                title: b.title,
-                artist: b.authors ? b.authors[0].name : 'Auteur inconnu',
-                year: b.publish_date || '',
-                genre: 'Livre / BD',
-                cover: b.cover ? b.cover.medium : ''
-            }];
+
+        if (data.items && data.items.length > 0) {
+            data.items.forEach(item => {
+                const info = item.volumeInfo;
+                let coverUrl = '';
+                
+                if (info.imageLinks) {
+                    coverUrl = info.imageLinks.thumbnail || info.imageLinks.smallThumbnail;
+                    coverUrl = coverUrl.replace('http:', 'https:');
+                }
+
+                results.push({
+                    title: info.title || 'Titre inconnu',
+                    artist: info.authors ? info.authors.join(', ') : 'Auteur inconnu',
+                    year: info.publishedDate ? info.publishedDate.substring(0, 4) : '',
+                    genre: info.categories ? info.categories[0] : 'Livre / BD',
+                    cover: coverUrl
+                });
+            });
+            return results;
         }
+    } catch (err) {
+        console.warn("Échec Google Books, tentative Open Library...", err);
     }
 
-    // Recherche générale via Google Books
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=6`);
-    const data = await res.json();
-    return (data.items || []).map(item => {
-        const info = item.volumeInfo;
-        return {
-            title: info.title,
-            artist: info.authors ? info.authors.join(', ') : 'Auteur inconnu',
-            year: info.publishedDate ? info.publishedDate.substring(0, 4) : '',
-            genre: info.categories ? info.categories[0] : 'Livre / BD',
-            cover: info.imageLinks ? info.imageLinks.thumbnail.replace('http:', 'https:') : ''
-        };
-    });
+    // B. Fallback / Secours via Open Library
+    try {
+        if (isIsbn) {
+            const coverUrl = `https://covers.openlibrary.org/b/isbn/${query}-L.jpg`;
+            const res = await fetch(`https://openlibrary.org/isbn/${query}.json`);
+            if (res.ok) {
+                const b = await res.json();
+                results.push({
+                    title: b.title || 'Livre',
+                    artist: 'Auteur inconnu',
+                    year: b.publish_date ? b.publish_date.substring(0, 4) : '',
+                    genre: 'Livre / BD',
+                    cover: coverUrl
+                });
+                return results;
+            }
+        } else {
+            const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=6`);
+            const data = await res.json();
+            if (data.docs) {
+                data.docs.forEach(doc => {
+                    results.push({
+                        title: doc.title,
+                        artist: doc.author_name ? doc.author_name[0] : 'Auteur inconnu',
+                        year: doc.first_publish_year ? String(doc.first_publish_year) : '',
+                        genre: 'Livre / BD',
+                        cover: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : ''
+                    });
+                });
+                return results;
+            }
+        }
+    } catch (err) {
+        console.error("Erreur Open Library :", err);
+    }
+
+    return results;
 }
 
 // 3. Films & DVDs (TMDB ou Open Movie Database)
