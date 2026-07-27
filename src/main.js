@@ -314,11 +314,17 @@ function displayResults(results, type) {
         resultsContainer.appendChild(div);
     });
 }
+// --- Scanner avec support du Zoom et Focus ---
 
-// --- Scanner de Code-Barres ---
+const zoomContainer = document.getElementById('zoom-container');
+const zoomSlider = document.getElementById('zoom-slider');
+const zoomValue = document.getElementById('zoom-value');
+let videoTrack = null;
 
 async function startScanner() {
     scannerModal.style.display = 'flex';
+    zoomContainer.style.display = 'none';
+
     const formatsSupported = [
         Html5QrcodeSupportedFormats.EAN_13,
         Html5QrcodeSupportedFormats.EAN_8,
@@ -329,10 +335,21 @@ async function startScanner() {
 
     html5QrCode = new Html5Qrcode("reader", { formatsToSupport: formatsSupported });
 
+    const config = {
+        fps: 15,
+        qrbox: { width: 280, height: 140 },
+        videoConstraints: {
+            facingMode: { exact: "environment" },
+            focusMode: "continuous", // Force la mise au point continue
+            width: { min: 1280, ideal: 1920 }, // Force la haute résolution pour la netteté
+            height: { min: 720, ideal: 1080 }
+        }
+    };
+
     try {
         await html5QrCode.start(
             { facingMode: "environment" },
-            { fps: 15, qrbox: { width: 280, height: 140 } },
+            config,
             (decodedText) => {
                 if (navigator.vibrate) navigator.vibrate(200);
                 stopScanner();
@@ -341,13 +358,68 @@ async function startScanner() {
             },
             () => {}
         );
+
+        // Récupérer la piste vidéo active pour piloter le zoom matériel
+        initHardwareZoom();
+
     } catch (err) {
-        alert("Erreur caméra : " + err);
-        stopScanner();
+        // Fallback en mode simple si la caméra dédiée échoue
+        try {
+            await html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 260, height: 130 } },
+                (decodedText) => {
+                    if (navigator.vibrate) navigator.vibrate(200);
+                    stopScanner();
+                    apiSearchInput.value = decodedText;
+                    searchAPI(decodedText);
+                },
+                () => {}
+            );
+            initHardwareZoom();
+        } catch (fallbackErr) {
+            alert("Erreur caméra : " + fallbackErr);
+            stopScanner();
+        }
+    }
+}
+
+function initHardwareZoom() {
+    try {
+        const videoElement = document.querySelector("#reader video");
+        if (!videoElement || !videoElement.srcObject) return;
+
+        videoTrack = videoElement.srcObject.getVideoTracks()[0];
+        const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+
+        // Si la caméra supporte le zoom
+        if (capabilities.zoom) {
+            zoomSlider.min = capabilities.zoom.min || 1;
+            zoomSlider.max = Math.min(capabilities.zoom.max || 5, 5); // Limite à 5x pour garder la lisibilité
+            zoomSlider.step = capabilities.zoom.step || 0.1;
+            zoomSlider.value = capabilities.zoom.min || 1;
+            zoomValue.textContent = `${zoomSlider.value}x`;
+
+            zoomContainer.style.display = 'flex';
+
+            // Écouter le slider de zoom
+            zoomSlider.oninput = (e) => {
+                const val = parseFloat(e.target.value);
+                zoomValue.textContent = `${val.toFixed(1)}x`;
+                videoTrack.applyConstraints({
+                    advanced: [{ zoom: val }]
+                }).catch(err => console.warn("Erreur application zoom :", err));
+            };
+        }
+    } catch (e) {
+        console.warn("Le zoom matériel n'est pas supporté sur ce navigateur/appareil.", e);
     }
 }
 
 async function stopScanner() {
+    videoTrack = null;
+    zoomContainer.style.display = 'none';
+
     if (html5QrCode && html5QrCode.isScanning) {
         await html5QrCode.stop();
         html5QrCode.clear();

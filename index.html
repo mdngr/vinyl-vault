@@ -86,7 +86,15 @@
             <button id="btn-close-scanner" class="btn-close">✕</button>
         </div>
         <div id="reader"></div>
-        <p class="scan-instruction">Place le code-barres EAN / ISBN dans le rectangle.</p>
+        
+        <!-- Contrôleur de zoom -->
+        <div id="zoom-container" class="zoom-container" style="display: none;">
+            <span>🔍 1x</span>
+            <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1">
+            <span id="zoom-value">1x</span>
+        </div>
+
+        <p class="scan-instruction">Place le code-barres dans le rectangle (utilise le zoom si besoin).</p>
     </div>
 </div>
 

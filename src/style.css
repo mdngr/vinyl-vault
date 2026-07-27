@@ -370,6 +370,32 @@ select { min-width: 180px; }
   border-radius: 50%; width: 32px; height: 32px; font-weight: bold; cursor: pointer;
 }
 
+/* Contrôle de zoom pour le scanner */
+.zoom-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 15px;
+  background: #2a2a2a;
+  padding: 8px 14px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.zoom-container input[type="range"] {
+  flex-grow: 1;
+  accent-color: var(--accent-scan);
+  cursor: pointer;
+}
+
+#zoom-value {
+  min-width: 30px;
+  text-align: right;
+  color: var(--text);
+  font-weight: bold;
+}
+
 #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
 
 @media (max-width: 1200px) { .vinyl-grid { column-count: 4; } }
