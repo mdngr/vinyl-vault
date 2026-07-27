@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinyl Vault - Ma Collection</title>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --accent: #3b82f6;
+            --accent-discogs: #ff5500;
+            --text: #ffffff;
+            --text-secondary: #aaaaaa;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        h1 { margin: 0; color: var(--accent); font-size: 1.8rem; }
+
+        .config-panel {
+            background: #2a2a2a;
+            padding: 12px;
+            border-radius: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .config-panel input {
+            background: #1e1e1e;
+            border: 1px solid #444;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            flex: 1;
+            min-width: 180px;
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 30px;
+        }
+
+        @media (max-width: 900px) {
+            .main-layout { grid-template-columns: 1fr; }
+        }
+
+        .panel {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 8px;
+            height: fit-content;
+        }
+
+        .form-group { margin-bottom: 15px; }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            background-color: #2a2a2a;
+            color: white;
+            box-sizing: border-box;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            color: white;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover { opacity: 0.9; }
+        .btn-discogs { background-color: var(--accent-discogs); }
+        .btn-secondary { background-color: #444; }
+
+        .discogs-results {
+            margin-top: 15px;
+            max-height: 350px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border-top: 1px solid #333;
+            padding-top: 15px;
+        }
+
+        .result-item {
+            display: flex;
+            gap: 12px;
+            background: #252525;
+            padding: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .result-item:hover { background: #333; }
+        .result-item img { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; }
+        .result-info { flex-grow: 1; font-size: 0.85rem; }
+        .result-title { font-weight: bold; }
+        .result-sub { color: var(--text-secondary); font-size: 0.75rem; }
+
+        .search-bar { margin-bottom: 20px; }
+        .vinyl-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .vinyl-card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .cover-img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            background-color: #333;
+        }
+
+        .card-body {
+            padding: 15px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .album-title { font-weight: bold; font-size: 1rem; margin-bottom: 4px; }
+        .artist-name { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 8px; }
+        .badge {
+            padding: 2px 8px;
+            background-color: #333;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            width: fit-content;
+        }
+
+        .btn-delete {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0,0,0,0.8);
+            border: none;
+            color: #ff5555;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div class="header-top">
+            <h1>💿 Vinyl Vault</h1>
+            <div id="stats" style="color: var(--text-secondary);">0 vinyle(s)</div>
+        </div>
+        
+        <!-- Panneau de configuration (Enregistré localement) -->
+        <details>
+            <summary style="cursor: pointer; color: var(--text-secondary); margin-bottom: 10px;">⚙️ Configuration des clés API</summary>
+            <div class="config-panel">
+                <input type="text" id="supabase-url" placeholder="Supabase URL (https://xxx.supabase.co)">
+                <input type="password" id="supabase-key" placeholder="Supabase Anon Key">
+                <input type="password" id="discogs-token" placeholder="Token Discogs">
+                <button class="btn btn-secondary" onclick="saveConfig()" style="width:auto; padding: 6px 16px;">Sauvegarder</button>
+            </div>
+        </details>
+    </header>
+
+    <div class="main-layout">
+        <!-- Recherche Discogs -->
+        <div class="panel">
+            <h3 style="margin-top:0;">Rechercher sur Discogs</h3>
+            <div class="form-group">
+                <input type="text" id="discogs-search" placeholder="Artiste, album...">
+            </div>
+            <button class="btn btn-discogs" onclick="searchDiscogs()">🔍 Chercher sur Discogs</button>
+
+            <div id="discogs-results" class="discogs-results" style="display: none;"></div>
+        </div>
+
+        <!-- Collection -->
+        <div>
+            <div class="search-bar">
+                <input type="text" id="search-input" placeholder="🔍 Filtrer ma collection...">
+            </div>
+            <div class="vinyl-grid" id="vinyl-grid"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let supabaseClient = null;
+    let vinyls = [];
+
+    const config = {
+        supabaseUrl: localStorage.getItem('sb_url') || '',
+        supabaseKey: localStorage.getItem('sb_key') || '',
+        discogsToken: localStorage.getItem('discogsToken') || ''
+    };
+
+    document.getElementById('supabase-url').value = config.supabaseUrl;
+    document.getElementById('supabase-key').value = config.supabaseKey;
+    document.getElementById('discogs-token').value = config.discogsToken;
+
+    function saveConfig() {
+        config.supabaseUrl = document.getElementById('supabase-url').value.trim();
+        config.supabaseKey = document.getElementById('supabase-key').value.trim();
+        config.discogsToken = document.getElementById('discogs-token').value.trim();
+
+        localStorage.setItem('sb_url', config.supabaseUrl);
+        localStorage.setItem('sb_key', config.supabaseKey);
+        localStorage.setItem('discogsToken', config.discogsToken);
+
+        initSupabase();
+        alert('Configuration sauvegardée localement !');
+    }
+
+    function initSupabase() {
+        if (config.supabaseUrl && config.supabaseKey) {
+            supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseKey);
+            fetchVinylsFromSupabase();
+        }
+    }
+
+    async function fetchVinylsFromSupabase() {
+        if (!supabaseClient) return;
+
+        const { data, error } = await supabaseClient
+            .from('vinyls')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Erreur Supabase :', error.message);
+            return;
+        }
+
+        vinyls = data.map(v => ({
+            id: v.id,
+            title: v.title,
+            artist: v.artist,
+            year: v.year,
+            genre: v.genre,
+            cover: v.cover,
+            discogsId: v.discogs_id
+        }));
+
+        renderVinyls();
+        updateStats();
+    }
+
+    async function addVinylToSupabase(vinyl) {
+        if (!supabaseClient) {
+            alert("Veuillez d'abord configurer vos clés Supabase !");
+            return;
+        }
+
+        const { error } = await supabaseClient
+            .from('vinyls')
+            .insert([{
+                id: vinyl.id,
+                title: vinyl.title,
+                artist: vinyl.artist,
+                year: vinyl.year,
+                genre: vinyl.genre,
+                cover: vinyl.cover,
+                discogs_id: vinyl.discogsId
+            }]);
+
+        if (error) {
+            alert("Erreur Supabase : " + error.message);
+            return;
+        }
+
+        vinyls.unshift(vinyl);
+        renderVinyls(document.getElementById('search-input').value);
+        updateStats();
+    }
+
+    window.deleteVinyl = async function(id) {
+        if (!confirm("Supprimer ce vinyle ?")) return;
+
+        if (supabaseClient) {
+            const { error } = await supabaseClient
+                .from('vinyls')
+                .delete()
+                .eq('id', id);
+
+            if (error) {
+                alert("Erreur lors de la suppression : " + error.message);
+                return;
+            }
+        }
+
+        vinyls = vinyls.filter(v => v.id !== id);
+        renderVinyls(document.getElementById('search-input').value);
+        updateStats();
+    };
+
+    async function searchDiscogs() {
+        const query = document.getElementById('discogs-search').value.trim();
+        const resultsContainer = document.getElementById('discogs-results');
+
+        if (!config.discogsToken) {
+            alert("Token Discogs manquant dans la configuration !");
+            return;
+        }
+
+        if (!query) return;
+
+        resultsContainer.style.display = 'flex';
+        resultsContainer.innerHTML = '<p style="color:var(--text-secondary); font-size:0.85rem;">Recherche...</p>';
+
+        try {
+            const url = `https://api.discogs.com/database/search?q=${encodeURIComponent(query)}&type=release&format=Vinyl&token=${config.discogsToken}&per_page=6`;
+            const response = await fetch(url);
+            
+            if (!response.ok) throw new Error("Erreur Discogs");
+
+            const data = await response.json();
+            displayDiscogsResults(data.results);
+        } catch (error) {
+            resultsContainer.innerHTML = `<p style="color:#ff5555; font-size:0.85rem;">Erreur : ${error.message}</p>`;
+        }
+    }
+
+    function displayDiscogsResults(results) {
+        const resultsContainer = document.getElementById('discogs-results');
+        resultsContainer.innerHTML = '';
+
+        if (!results || results.length === 0) {
+            resultsContainer.innerHTML = '<p style="color:var(--text-secondary); font-size:0.85rem;">Aucun résultat.</p>';
+            return;
+        }
+
+        results.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'result-item';
+            
+            const parts = item.title.split(' - ');
+            const artist = parts[0] || 'Artiste inconnu';
+            const title = parts[1] || item.title;
+            const year = item.year || '';
+            const genre = item.genre ? item.genre[0] : '';
+            const cover = item.cover_image || item.thumb;
+
+            div.innerHTML = `
+                <img src="${item.thumb || 'https://via.placeholder.com/50'}" alt="">
+                <div class="result-info">
+                    <div class="result-title">${title}</div>
+                    <div class="result-sub">${artist} ${year ? `(${year})` : ''}</div>
+                </div>
+            `;
+
+            div.onclick = () => {
+                addVinylToSupabase({
+                    id: Date.now(),
+                    title: title,
+                    artist: artist,
+                    year: year,
+                    genre: genre,
+                    cover: cover,
+                    discogsId: item.id
+                });
+                resultsContainer.style.display = 'none';
+                document.getElementById('discogs-search').value = '';
+            };
+
+            resultsContainer.appendChild(div);
+        });
+    }
+
+    function updateStats() {
+        document.getElementById('stats').textContent = `${vinyls.length} vinyle(s)`;
+    }
+
+    function renderVinyls(filterText = '') {
+        const grid = document.getElementById('vinyl-grid');
+        grid.innerHTML = '';
+        
+        const filtered = vinyls.filter(v => 
+            v.title.toLowerCase().includes(filterText.toLowerCase()) ||
+            v.artist.toLowerCase().includes(filterText.toLowerCase()) ||
+            (v.genre && v.genre.toLowerCase().includes(filterText.toLowerCase()))
+        );
+
+        if (filtered.length === 0) {
+            grid.innerHTML = '<p style="color: var(--text-secondary); grid-column: 1/-1;">Aucun vinyle affiché.</p>';
+            return;
+        }
+
+        filtered.forEach(vinyl => {
+            const defaultCover = 'https://via.placeholder.com/200x200/2a2a2a/ffffff?text=Pas+d%27image';
+            const card = document.createElement('div');
+            card.className = 'vinyl-card';
+            card.innerHTML = `
+                <button class="btn-delete" onclick="deleteVinyl(${vinyl.id})">✕</button>
+                <img class="cover-img" src="${vinyl.cover || defaultCover}" alt="${vinyl.title}" onerror="this.src='${defaultCover}'">
+                <div class="card-body">
+                    <div>
+                        <div class="album-title">${vinyl.title}</div>
+                        <div class="artist-name">${vinyl.artist} ${vinyl.year ? `(${vinyl.year})` : ''}</div>
+                    </div>
+                    ${vinyl.genre ? `<span class="badge">${vinyl.genre}</span>` : ''}
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    document.getElementById('search-input').addEventListener('input', (e) => renderVinyls(e.target.value));
+
+    initSupabase();
+</script>
+
+</body>
+</html>
