@@ -398,7 +398,7 @@ select { min-width: 180px; }
 
 #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
 
-@media (max-width: 1200px) { .vinyl-grid { column-count: 4; } }
-@media (max-width: 900px)  { .vinyl-grid { column-count: 3; } }
-@media (max-width: 600px)  { .vinyl-grid { column-count: 2; } }
-@media (max-width: 400px)  { .vinyl-grid { column-count: 1; } }
+@media (max-width: 1200px) { .vinyl-grid { column-count: 5; } }
+@media (max-width: 900px)  { .vinyl-grid { column-count: 4; } }
+@media (max-width: 600px)  { .vinyl-grid { column-count: 3; } }
+@media (max-width: 400px)  { .vinyl-grid { column-count: 3; } }
