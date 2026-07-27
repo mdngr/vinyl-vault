@@ -21,6 +21,7 @@ body {
   margin: 0 auto;
 }
 
+/* Header */
 header {
   display: flex;
   justify-content: space-between;
@@ -28,6 +29,12 @@ header {
   border-bottom: 2px solid var(--accent);
   padding-bottom: 15px;
   margin-bottom: 25px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
 h1 {
@@ -40,23 +47,47 @@ h1 {
   color: var(--text-secondary);
 }
 
-.main-layout {
-  display: grid;
-  grid-template-columns: 360px 1fr;
-  gap: 30px;
+.btn-login {
+  background-color: #333;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  width: auto;
 }
 
-@media (max-width: 900px) {
-  .main-layout {
-    grid-template-columns: 1fr;
-  }
+.btn-login:hover {
+  background-color: #444;
 }
 
+.btn-logout {
+  background-color: #e11d48;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  width: auto;
+}
+
+/* Barre de recherche Full Width */
+.search-bar {
+  margin-bottom: 25px;
+  width: 100%;
+}
+
+.search-bar input {
+  width: 100%;
+  padding: 14px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background-color: #2a2a2a;
+  color: white;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+/* Panneau d'ajout Admin */
 .panel {
   background-color: var(--card-bg);
   padding: 20px;
   border-radius: 8px;
-  height: fit-content;
+  margin-bottom: 25px;
 }
 
 .panel-title {
@@ -67,7 +98,7 @@ h1 {
   margin-bottom: 15px;
 }
 
-input {
+.form-group input {
   width: 100%;
   padding: 10px;
   border-radius: 4px;
@@ -80,7 +111,12 @@ input {
 .btn-group {
   display: flex;
   gap: 10px;
-  flex-direction: column;
+}
+
+@media (max-width: 600px) {
+  .btn-group {
+    flex-direction: column;
+  }
 }
 
 .btn {
@@ -98,13 +134,8 @@ input {
   opacity: 0.9;
 }
 
-.btn-discogs {
-  background-color: var(--accent-discogs);
-}
-
-.btn-scan {
-  background-color: var(--accent-scan);
-}
+.btn-discogs { background-color: var(--accent-discogs); }
+.btn-scan { background-color: var(--accent-scan); }
 
 .discogs-results {
   margin-top: 15px;
@@ -128,49 +159,16 @@ input {
   transition: background 0.2s;
 }
 
-.result-item:hover {
-  background: #333;
-}
+.result-item:hover { background: #333; }
+.result-item img { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; }
+.result-info { flex-grow: 1; font-size: 0.85rem; }
+.result-title { font-weight: bold; }
+.result-sub { color: var(--text-secondary); font-size: 0.75rem; }
 
-.result-item img {
-  width: 50px;
-  height: 50px;
-  object-fit: cover;
-  border-radius: 4px;
-}
-
-.result-info {
-  flex-grow: 1;
-  font-size: 0.85rem;
-}
-
-.result-title {
-  font-weight: bold;
-}
-
-.result-sub {
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-}
-
-.status-text {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-}
-
-.error-text {
-  color: #ff5555;
-  font-size: 0.85rem;
-}
-
-.search-bar {
-  margin-bottom: 20px;
-}
-
+/* Grille Masonry */
 .vinyl-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 20px;
+  column-count: 5;
+  column-gap: 20px;
 }
 
 .vinyl-card {
@@ -180,11 +178,14 @@ input {
   display: flex;
   flex-direction: column;
   position: relative;
+  break-inside: avoid;
+  margin-bottom: 20px;
 }
 
 .cover-img {
   width: 100%;
-  height: 200px;
+  height: auto;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
   background-color: #333;
 }
@@ -233,10 +234,15 @@ input {
 
 .empty-message {
   color: var(--text-secondary);
-  grid-column: 1 / -1;
 }
 
-/* Modal Scanner */
+/* Media Queries Masonry */
+@media (max-width: 1200px) { .vinyl-grid { column-count: 4; } }
+@media (max-width: 900px)  { .vinyl-grid { column-count: 3; } }
+@media (max-width: 600px)  { .vinyl-grid { column-count: 2; } }
+@media (max-width: 400px)  { .vinyl-grid { column-count: 1; } }
+
+/* Modals */
 .modal {
   position: fixed;
   top: 0;
@@ -261,16 +267,13 @@ input {
   box-sizing: border-box;
 }
 
+.login-content { max-width: 380px; }
+
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
-}
-
-.modal-header h3 {
-  margin: 0;
-  color: var(--accent-scan);
 }
 
 .btn-close {
@@ -297,83 +300,4 @@ input {
   font-size: 0.85rem;
   margin-top: 15px;
   margin-bottom: 0;
-}
-
-/* Header Layout */
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-}
-
-.btn-login {
-  background-color: #333;
-  padding: 8px 16px;
-  font-size: 0.85rem;
-  width: auto;
-}
-
-.btn-login:hover {
-  background-color: #444;
-}
-
-.btn-logout {
-  background-color: #e11d48;
-  padding: 8px 16px;
-  font-size: 0.85rem;
-  width: auto;
-}
-
-.login-content {
-  max-width: 380px;
-}
-
-.login-content label {
-  display: block;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin-bottom: 5px;
-}
-
-/* Mode Masonry (utilisé par défaut ou en mode lecture seule) */
-.vinyl-grid {
-  /* Nombre de colonnes qui s'adapte à l'écran */
-  column-count: 5;
-  column-gap: 20px;
-}
-
-/* On force chaque carte à se comporter comme un bloc indissociable */
-.vinyl-card {
-  background-color: var(--card-bg);
-  border-radius: 8px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  
-  /* Essentiel pour le Masonry CSS */
-  break-inside: avoid;
-  margin-bottom: 20px;
-}
-
-/* Responsiveness du Masonry selon la largeur de l'écran */
-@media (max-width: 1200px) {
-  .vinyl-grid { column-count: 4; }
-}
-
-@media (max-width: 900px) {
-  .vinyl-grid { column-count: 3; }
-}
-
-@media (max-width: 600px) {
-  .vinyl-grid { column-count: 2; }
-}
-
-@media (max-width: 400px) {
-  .vinyl-grid { column-count: 1; }
 }

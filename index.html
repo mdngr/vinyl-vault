@@ -15,35 +15,32 @@
             <div id="stats" class="stats-count">0 vinyle(s)</div>
         </div>
         <div class="header-right">
-            <!-- Bouton pour ouvrir la connexion Admin -->
             <button id="btn-auth" class="btn btn-login">🔒 Connexion Admin</button>
         </div>
     </header>
 
-    <div class="main-layout">
-        <!-- Recherche Discogs & Scan (Affiché uniquement si connecté) -->
-        <div class="panel" id="admin-panel" style="display: none;">
-            <h3 class="panel-title">Rechercher & Ajouter</h3>
-            <div class="form-group">
-                <input type="text" id="discogs-search" placeholder="Artiste, album, code-barres...">
-            </div>
-            
-            <div class="btn-group">
-                <button class="btn btn-discogs" id="btn-search">🔍 Chercher</button>
-                <button class="btn btn-scan" id="btn-scan">📷 Scanner Code-Barres</button>
-            </div>
-
-            <div id="discogs-results" class="discogs-results" style="display: none;"></div>
-        </div>
-
-        <!-- Collection -->
-        <div id="collection-section">
-            <div class="search-bar">
-                <input type="text" id="search-input" placeholder="🔍 Filtrer ma collection...">
-            </div>
-            <div class="vinyl-grid" id="vinyl-grid"></div>
-        </div>
+    <!-- Barre de recherche Full Width -->
+    <div class="search-bar">
+        <input type="text" id="search-input" placeholder="🔍 Filtrer ma collection...">
     </div>
+
+    <!-- Bloc d'administration (masqué par défaut) -->
+    <div class="panel" id="admin-panel" style="display: none;">
+        <h3 class="panel-title">Rechercher & Ajouter un vinyle</h3>
+        <div class="form-group">
+            <input type="text" id="discogs-search" placeholder="Artiste, album, code-barres...">
+        </div>
+        
+        <div class="btn-group">
+            <button class="btn btn-discogs" id="btn-search">🔍 Chercher sur Discogs</button>
+            <button class="btn btn-scan" id="btn-scan">📷 Scanner Code-Barres</button>
+        </div>
+
+        <div id="discogs-results" class="discogs-results" style="display: none;"></div>
+    </div>
+
+    <!-- Grille Masonry -->
+    <div class="vinyl-grid" id="vinyl-grid"></div>
 </div>
 
 <!-- Modal Connexion Admin -->
