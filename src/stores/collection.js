@@ -6,7 +6,7 @@ export const useCollectionStore = defineStore('collection', {
   state: () => ({
     items: [],
     loading: false,
-    activeTypeFilter: 'all',
+    activeTypeFilter: 'vinyl',
     showWishlistOnly: false,
     currentViewMode: 'grid',
     searchQuery: '',
