@@ -1,6 +1,6 @@
 <template>
   <div class="app-shell">
-    <!-- En-tête fixe compact -->
+    <!-- En-tête fixe compact avec gestion Safe Area iOS -->
     <header class="app-header">
       <div class="logo">
         <span class="logo-icon">🏛️</span>
@@ -18,6 +18,7 @@
            =================================================================== -->
       <section v-if="currentTab === 'library'" class="tab-page">
         <div class="toolbar">
+          <!-- Recherche et Bouton Dé côte à côte -->
           <div class="toolbar-top">
             <div class="search-box">
               <input 
@@ -31,7 +32,18 @@
             </button>
           </div>
 
+          <!-- Filtres + Toggle Wishlist + Switcher de vue -->
           <div class="toolbar-middle">
+            <!-- Bouton bascule Wishlist -->
+            <button 
+              class="btn-wishlist-toggle"
+              :class="{ active: collectionStore.showWishlistOnly }"
+              @click="collectionStore.showWishlistOnly = !collectionStore.showWishlistOnly"
+            >
+              ✨ Wishlist
+            </button>
+
+            <!-- Filtres par catégorie -->
             <div class="tabs">
               <button 
                 v-for="tab in filterTabs" 
@@ -44,6 +56,7 @@
               </button>
             </div>
 
+            <!-- Switcher Grille / Liste -->
             <div class="view-toggle">
               <button 
                 class="btn-toggle" 
@@ -64,6 +77,25 @@
             </div>
           </div>
 
+          <!-- Barre de Tri -->
+          <div class="sort-bar">
+            <span class="sort-label">Trier par :</span>
+            
+            <select v-model="collectionStore.sortBy" class="sort-select">
+              <option value="title">🔤 Titre</option>
+              <option value="artist">👤 Auteur / Artiste</option>
+              <option value="year">📅 Année</option>
+            </select>
+
+            <button 
+              class="btn-sort-dir" 
+              @click="collectionStore.sortOrder = collectionStore.sortOrder === 'asc' ? 'desc' : 'asc'"
+              :title="collectionStore.sortOrder === 'asc' ? 'Ordre Ascendant' : 'Ordre Descendant'"
+            >
+              {{ collectionStore.sortOrder === 'asc' ? '⬆️ Asc' : '⬇️ Desc' }}
+            </button>
+          </div>
+
           <div class="stats-bar">{{ collectionStore.stats }}</div>
         </div>
 
@@ -71,9 +103,13 @@
           <p>Chargement de la collection...</p>
         </div>
 
-        <div v-else-if="collectionStore.filteredItems.length === 0" class="empty-state">
-          <p>Aucun élément trouvé dans cette catégorie.</p>
-        </div>
+        <EmptyState 
+          v-else-if="collectionStore.filteredItems.length === 0"
+          :showWishlistOnly="collectionStore.showWishlistOnly"
+          :searchQuery="collectionStore.searchQuery"
+          :activeTypeFilter="collectionStore.activeTypeFilter"
+          @action="currentTab = 'add'"
+        />
 
         <div 
           v-else 
@@ -212,6 +248,7 @@ import { useAuthStore } from '../stores/auth';
 import { useCollectionStore } from '../stores/collection';
 import ItemCard from '../components/ItemCard.vue';
 import ApiSearchPanel from '../components/ApiSearchPanel.vue';
+import EmptyState from '../components/EmptyState.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -225,7 +262,7 @@ const currentTab = ref('library');
 const activeTabTitle = computed(() => {
   if (currentTab.value === 'add') return '➕ Ajout';
   if (currentTab.value === 'account') return '👤 Profil';
-  return '📚 Ma Collection';
+  return collectionStore.showWishlistOnly ? '✨ Ma Wishlist' : '📚 Ma Collection';
 });
 
 // Stats profil
@@ -247,8 +284,7 @@ const filterTabs = [
   { id: 'all', label: 'Tout' },
   { id: 'vinyl', label: '💿 Vinyles' },
   { id: 'book', label: '📚 Livres' },
-  { id: 'movie', label: '🎬 Films' },
-  { id: 'wishlist', label: '✨ Wishlist' }
+  { id: 'movie', label: '🎬 Films' }
 ];
 
 onMounted(() => {
@@ -312,15 +348,19 @@ function runLuckyDip() {
   color: #fff;
 }
 
-/* Header Fixe Haut */
+/* Header Fixe Haut avec Safe Area iOS */
 .app-header {
-  height: 56px;
+  height: auto;
+  min-height: 52px;
+  padding-top: calc(env(safe-area-inset-top) + 8px);
+  padding-bottom: 8px;
+  padding-left: 16px;
+  padding-right: 16px;
   background: #18181b;
   border-bottom: 1px solid #27272a;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
   flex-shrink: 0;
 }
 
@@ -333,12 +373,13 @@ function runLuckyDip() {
 }
 
 .view-title-badge {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   background: #27272a;
   color: #60a5fa;
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 /* Zone Défilante Milieu */
@@ -346,7 +387,7 @@ function runLuckyDip() {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-  padding-bottom: 80px; /* Marge pour ne pas cacher le bas par la TabBar */
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling: touch;
 }
 
@@ -451,14 +492,14 @@ function runLuckyDip() {
   bottom: 0;
   left: 0;
   width: 100vw;
-  height: 64px;
+  height: calc(64px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
   background: #18181b;
   border-top: 1px solid #27272a;
   display: flex;
   justify-content: space-around;
   align-items: center;
   z-index: 1000;
-  padding-bottom: env(safe-area-inset-bottom); /* Support iPhone notch */
 }
 
 .tab-item {
@@ -489,7 +530,6 @@ function runLuckyDip() {
   font-weight: 600;
 }
 
-/* Bouton Central 'Ajouter' en surbrillance */
 .tab-item-add .add-icon-bubble {
   background: #3b82f6;
   color: #fff;
@@ -509,7 +549,7 @@ function runLuckyDip() {
   background: #2563eb;
 }
 
-/* Toolbar & Grille */
+/* Toolbar & Layout */
 .toolbar {
   display: flex;
   flex-direction: column;
@@ -519,7 +559,8 @@ function runLuckyDip() {
 
 .toolbar-top {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 }
 
 .search-box {
@@ -539,17 +580,43 @@ function runLuckyDip() {
   background: #8b5cf6;
   color: #fff;
   border: none;
-  padding: 10px 14px;
+  width: 42px;
+  height: 42px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .toolbar-middle {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  width: 100%;
+}
+
+.btn-wishlist-toggle {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #a1a1aa;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.btn-wishlist-toggle.active {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border-color: #f59e0b;
 }
 
 .tabs {
@@ -557,6 +624,12 @@ function runLuckyDip() {
   gap: 6px;
   overflow-x: auto;
   flex: 1;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab-btn {
@@ -582,6 +655,7 @@ function runLuckyDip() {
   border: 1px solid #27272a;
   border-radius: 8px;
   padding: 2px;
+  flex-shrink: 0;
 }
 
 .btn-toggle {
@@ -646,5 +720,38 @@ function runLuckyDip() {
   color: #a1a1aa;
   font-size: 1.2rem;
   cursor: pointer;
+}
+
+.sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #a1a1aa;
+}
+
+.sort-label {
+  white-space: nowrap;
+}
+
+.sort-select {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.btn-sort-dir {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #60a5fa;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
 }
 </style>

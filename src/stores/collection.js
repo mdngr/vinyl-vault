@@ -7,35 +7,81 @@ export const useCollectionStore = defineStore('collection', {
     items: [],
     loading: false,
     activeTypeFilter: 'all',
-    currentViewMode: window.innerWidth < 768 ? 'list' : 'masonry',
-    searchQuery: ''
+    showWishlistOnly: false,
+    currentViewMode: 'grid',
+    searchQuery: '',
+    // 🔽 Nouveaux états pour le tri
+    sortBy: 'title', // 'title', 'artist', 'year'
+    sortOrder: 'asc'  // 'asc', 'desc'
   }),
 
   getters: {
     filteredItems(state) {
       const query = state.searchQuery.toLowerCase().trim();
 
-      return state.items.filter(item => {
-        let matchesType = false;
-        if (state.activeTypeFilter === 'wishlist') {
-          matchesType = item.is_wishlist === true;
-        } else {
-          const isCategoryMatch = (state.activeTypeFilter === 'all' || item.type === state.activeTypeFilter);
-          matchesType = isCategoryMatch && !item.is_wishlist;
-        }
-
+      // 1. Filtrage
+      let result = state.items.filter(item => {
+        const matchesStatus = state.showWishlistOnly ? !!item.is_wishlist : !item.is_wishlist;
+        const matchesType = state.activeTypeFilter === 'all' || item.type === state.activeTypeFilter;
         const matchesText = !query || 
           (item.title && item.title.toLowerCase().includes(query)) ||
           (item.artist && item.artist.toLowerCase().includes(query));
 
-        return matchesType && matchesText;
+        return matchesStatus && matchesType && matchesText;
+      });
+
+      // 2. Tri dynamique
+      return result.sort((a, b) => {
+        let valA = a[state.sortBy] || '';
+        let valB = b[state.sortBy] || '';
+
+        // Si on trie par année, on convertit en nombre
+        if (state.sortBy === 'year') {
+          valA = parseInt(valA, 10) || 0;
+          valB = parseInt(valB, 10) || 0;
+        } else {
+          valA = valA.toString().toLowerCase();
+          valB = valB.toString().toLowerCase();
+        }
+
+        let comparison = 0;
+        if (valA > valB) comparison = 1;
+        if (valA < valB) comparison = -1;
+
+        return state.sortOrder === 'asc' ? comparison : -comparison;
       });
     },
 
     stats(state) {
-      const collectionCount = state.items.filter(i => !i.is_wishlist).length;
-      const wishlistCount = state.items.filter(i => i.is_wishlist).length;
-      return `${collectionCount} élément(s) • ${wishlistCount} wishlist`;
+      const items = this.filteredItems;
+      const count = items.length;
+
+      if (count === 0) {
+        return '0 élément';
+      }
+
+      // Helper pour accorder automatiquement au singulier/pluriel
+      const pluralize = (nb, singular, plural = singular + 's') => {
+        return `${nb} ${nb > 1 ? plural : singular}`;
+      };
+
+      const status = state.showWishlistOnly ? 'en wishlist' : 'en collection';
+
+      // Si un type spécifique est filtré (Vinyle, Livre, Film)
+      if (state.activeTypeFilter === 'vinyl') {
+        return `${pluralize(count, 'vinyle')} ${status}`;
+      }
+
+      if (state.activeTypeFilter === 'book') {
+        return `${pluralize(count, 'livre')} ${status}`;
+      }
+
+      if (state.activeTypeFilter === 'movie') {
+        return `${pluralize(count, 'film')} ${status}`;
+      }
+
+      // Si l'onglet "Tout" est sélectionné
+      return `${pluralize(count, 'œuvre')} ${status}`;
     }
   },
 
