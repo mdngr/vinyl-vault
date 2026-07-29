@@ -17,51 +17,78 @@ body {
 }
 
 .container {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
-/* Header */
+/* --- Header --- */
 header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-bottom: 2px solid var(--accent);
-  padding-bottom: 15px;
+  padding-bottom: 12px;
   margin-bottom: 20px;
+  gap: 10px;
 }
 
 .header-left {
   display: flex;
-  align-items: center;
-  gap: 15px;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 h1 {
   margin: 0;
   color: var(--accent);
-  font-size: 1.8rem;
+  font-size: 1.6rem;
+  letter-spacing: -0.5px;
 }
 
 .stats-count {
   color: var(--text-secondary);
+  font-size: 0.85rem;
 }
 
+/* Boutons Header Auth */
 .btn-login {
-  background-color: #333;
-  padding: 8px 16px;
+  background-color: #2a2a2a;
+  color: var(--text);
+  border: 1px solid #333;
+  padding: 8px 14px;
   font-size: 0.85rem;
   width: auto;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.btn-login:hover {
+  background-color: #333;
 }
 
 .btn-logout {
   background-color: #e11d48;
-  padding: 8px 16px;
+  color: white;
+  border: none;
+  padding: 8px 14px;
   font-size: 0.85rem;
   width: auto;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
-/* Controls & Tabs */
+.btn-logout:hover {
+  background-color: #be123c;
+}
+
+/* --- Controls & Tabs --- */
 .controls-bar {
   display: flex;
   flex-direction: column;
@@ -69,11 +96,18 @@ h1 {
   margin-bottom: 25px;
 }
 
+.controls-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+}
+
 .category-tabs {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   overflow-x: auto;
-  padding-bottom: 5px;
+  padding-bottom: 4px;
 }
 
 .tab-btn {
@@ -94,6 +128,31 @@ h1 {
   border-color: var(--accent);
 }
 
+/* Switcher de Vue (Grille / Liste) */
+.view-switcher {
+  display: flex;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.view-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.view-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
 .search-bar input {
   width: 100%;
   padding: 14px;
@@ -105,12 +164,13 @@ h1 {
   box-sizing: border-box;
 }
 
-/* Panel Admin */
+/* --- Panel Admin --- */
 .panel {
   background-color: var(--card-bg);
   padding: 20px;
   border-radius: 8px;
   margin-bottom: 25px;
+  border: 1px solid #2a2a2a;
 }
 
 .panel-title { margin-top: 0; }
@@ -135,9 +195,7 @@ select, .form-group input {
 }
 
 select { min-width: 180px; }
-
 .form-row input { flex-grow: 1; }
-
 .btn-group { display: flex; gap: 10px; }
 
 .btn {
@@ -180,13 +238,18 @@ select { min-width: 180px; }
 .result-title { font-weight: bold; }
 .result-sub { color: var(--text-secondary); font-size: 0.75rem; }
 
-/* Masonry Grid */
-.vinyl-grid {
-  column-count: 5;
+/* --- 1. Mode Grille Masonry --- */
+.vinyl-grid.view-masonry {
+  column-count: 6;
   column-gap: 20px;
 }
 
-.vinyl-card {
+@media (max-width: 1200px) { .vinyl-grid.view-masonry { column-count: 5; } }
+@media (max-width: 900px)  { .vinyl-grid.view-masonry { column-count: 4; } }
+@media (max-width: 600px)  { .vinyl-grid.view-masonry { column-count: 3; } }
+@media (max-width: 400px)  { .vinyl-grid.view-masonry { column-count: 3; } }
+
+.vinyl-grid.view-masonry .vinyl-card {
   background-color: var(--card-bg);
   border-radius: 8px;
   overflow: hidden;
@@ -195,22 +258,107 @@ select { min-width: 180px; }
   position: relative;
   break-inside: avoid;
   margin-bottom: 20px;
+  border: 1px solid #2a2a2a;
 }
 
-.cover-img {
+.vinyl-grid.view-masonry .cover-img {
   width: 100%;
   height: auto;
   object-fit: cover;
   background-color: #333;
 }
 
-.card-body {
+.vinyl-grid.view-masonry .card-body {
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
+/* --- 2. Mode Liste Compacte (Miniatures) --- */
+.vinyl-grid.view-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vinyl-grid.view-list .vinyl-card {
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding: 8px 12px;
+  gap: 15px;
+  border: 1px solid #2a2a2a;
+}
+
+.vinyl-grid.view-list .cover-img {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background-color: #333;
+}
+
+.vinyl-grid.view-list .card-body {
+  padding: 0;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vinyl-grid.view-list .album-title {
+  font-size: 0.95rem;
+}
+
+.vinyl-grid.view-list .artist-name {
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+/* Actions Admin (Modifier / Supprimer) sur cartes */
+.card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+
+.vinyl-grid.view-list .card-actions {
+  position: static;
+}
+
+.btn-card-action {
+  background: rgba(0, 0, 0, 0.75);
+  border: none;
+  color: white;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn-card-action:hover {
+  background: rgba(0, 0, 0, 0.95);
+  transform: scale(1.05);
+}
+
+.btn-card-action.btn-delete-card { color: #ff5555; }
+.btn-card-action.btn-edit-card { color: #3b82f6; }
+
+/* Styles Génériques des éléments */
 .type-tag {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -221,20 +369,26 @@ select { min-width: 180px; }
 .album-title { font-weight: bold; font-size: 0.95rem; }
 .artist-name { color: var(--text-secondary); font-size: 0.85rem; }
 
-.btn-delete {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: rgba(0, 0, 0, 0.8);
-  border: none;
-  color: #ff5555;
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
+/* Zoom Container Scanner */
+.zoom-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 15px;
+  background: #2a2a2a;
+  padding: 8px 14px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.zoom-container input[type="range"] {
+  flex-grow: 1;
+  accent-color: var(--accent-scan);
   cursor: pointer;
 }
 
-/* --- Style de la Modale de Connexion Admin --- */
+/* --- Modales & Glassmorphism --- */
 
 .modal {
   position: fixed;
@@ -243,7 +397,8 @@ select { min-width: 180px; }
   width: 100vw;
   height: 100vh;
   background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px); /* Effet de flou en arrière-plan */
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -253,13 +408,14 @@ select { min-width: 180px; }
 }
 
 .modal-content {
-  background: var(--card-bg);
-  border: 1px solid #2a2a2a;
+  background: #1e1e1e;
+  border: 1px solid #2e2e2e;
   padding: 24px;
   border-radius: 12px;
   width: 100%;
+  max-width: 500px;
   box-sizing: border-box;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
 }
 
 .login-content {
@@ -271,6 +427,8 @@ select { min-width: 180px; }
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  border-bottom: 1px solid #2a2a2a;
+  padding-bottom: 12px;
 }
 
 .modal-header h3 {
@@ -297,31 +455,26 @@ select { min-width: 180px; }
 }
 
 .btn-close:hover {
-  background: #333;
+  background: #3b3b3b;
   color: var(--text);
 }
 
-/* Formulaire de connexion */
-#login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
+/* --- Formulaires dans Modales --- */
 
-#login-form .form-group {
-  margin: 0;
+.modal-content .form-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-bottom: 14px;
 }
 
-#login-form label {
+.modal-content label {
   font-size: 0.85rem;
   color: var(--text-secondary);
   font-weight: 500;
 }
 
-#login-form input {
+.modal-content input, .modal-content select {
   width: 100%;
   padding: 10px 12px;
   border-radius: 6px;
@@ -330,75 +483,48 @@ select { min-width: 180px; }
   color: var(--text);
   font-size: 0.95rem;
   box-sizing: border-box;
-  transition: border-color 0.2s, outline 0.2s;
+  transition: border-color 0.2s;
 }
 
-#login-form input:focus {
+.modal-content input:focus, .modal-content select:focus {
   outline: none;
   border-color: var(--accent);
 }
 
-#login-form button[type="submit"] {
-  margin-top: 8px;
-  padding: 10px;
-  font-size: 0.95rem;
-}
-
-/* Modals */
-.modal {
-  position: fixed;
-  top: 0; left: 0; width: 100vw; height: 100vh;
-  background: rgba(0, 0, 0, 0.85);
-  display: flex; justify-content: center; align-items: center;
-  z-index: 1000; padding: 15px; box-sizing: border-box;
-}
-
-.modal-content {
-  background: var(--card-bg);
-  padding: 20px; border-radius: 12px;
-  width: 100%; max-width: 500px; box-sizing: border-box;
-}
-
-.login-content { max-width: 380px; }
-
-.modal-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;
-}
-
-.btn-close {
-  background: #333; border: none; color: white;
-  border-radius: 50%; width: 32px; height: 32px; font-weight: bold; cursor: pointer;
-}
-
-/* Contrôle de zoom pour le scanner */
-.zoom-container {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 15px;
-  background: #2a2a2a;
-  padding: 8px 14px;
-  border-radius: 8px;
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-}
-
-.zoom-container input[type="range"] {
-  flex-grow: 1;
-  accent-color: var(--accent-scan);
-  cursor: pointer;
-}
-
-#zoom-value {
-  min-width: 30px;
-  text-align: right;
-  color: var(--text);
-  font-weight: bold;
-}
-
 #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
 
-@media (max-width: 1200px) { .vinyl-grid { column-count: 5; } }
-@media (max-width: 900px)  { .vinyl-grid { column-count: 4; } }
-@media (max-width: 600px)  { .vinyl-grid { column-count: 3; } }
-@media (max-width: 400px)  { .vinyl-grid { column-count: 3; } }
+.scan-instruction {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-top: 15px;
+  margin-bottom: 0;
+}
+
+/* Adaptations Mobile (< 600px) */
+@media (max-width: 600px) {
+  body { padding: 12px; }
+  header { padding-bottom: 10px; margin-bottom: 15px; }
+  h1 { font-size: 1.3rem; }
+  .stats-count { font-size: 0.75rem; }
+  .header-left { gap: 6px; }
+  .auth-text { display: none; }
+  .btn-login, .btn-logout { padding: 8px 12px; font-size: 1rem; }
+}
+
+/* Badge Doublon dans les résultats de recherche */
+.badge-duplicate {
+  background-color: #e11d48;
+  color: white;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: bold;
+  margin-left: 8px;
+  display: inline-block;
+}
+
+.result-item.is-duplicate {
+  border: 1px solid #e11d48;
+  opacity: 0.85;
+}

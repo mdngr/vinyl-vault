@@ -1,18 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
+// --- Variables d'Environnement & Initialisation Supabase ---
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN;
-const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY || ''; // Optionnel si configuré dans Vercel
+const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY || '';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// State local
 let items = [];
 let activeTypeFilter = 'all';
+let currentViewMode = window.innerWidth < 768 ? 'list' : 'masonry'; // Vue Liste par défaut sur mobile
+
 let html5QrCode = null;
 let currentUser = null;
+let videoTrack = null;
 
-// Éléments DOM
+// --- Sélection des Éléments DOM ---
 const grid = document.getElementById('vinyl-grid');
 const searchInput = document.getElementById('search-input');
 const apiSearchInput = document.getElementById('api-search-input');
@@ -24,13 +30,58 @@ const scannerModal = document.getElementById('scanner-modal');
 const resultsContainer = document.getElementById('api-results');
 const stats = document.getElementById('stats');
 
+// Auth DOM
 const btnAuth = document.getElementById('btn-auth');
 const loginModal = document.getElementById('login-modal');
 const btnCloseLogin = document.getElementById('btn-close-login');
 const loginForm = document.getElementById('login-form');
 const adminPanel = document.getElementById('admin-panel');
 
-// --- Gestion Authentification ---
+// View Switcher DOM
+const btnViewGrid = document.getElementById('btn-view-grid');
+const btnViewList = document.getElementById('btn-view-list');
+
+// Scanner Zoom DOM
+const zoomContainer = document.getElementById('zoom-container');
+const zoomSlider = document.getElementById('zoom-slider');
+const zoomValue = document.getElementById('zoom-value');
+
+// Edit Modal DOM
+const editModal = document.getElementById('edit-modal');
+const btnCloseEdit = document.getElementById('btn-close-edit');
+const editForm = document.getElementById('edit-form');
+const editIdInput = document.getElementById('edit-id');
+const editTitleInput = document.getElementById('edit-title');
+const editArtistInput = document.getElementById('edit-artist');
+const editYearInput = document.getElementById('edit-year');
+const editGenreInput = document.getElementById('edit-genre');
+const editCoverInput = document.getElementById('edit-cover');
+const editTypeSelect = document.getElementById('edit-type');
+
+// ==========================================
+// 1. GESTION DU SWITCHER DE VUE (GRID / LIST)
+// ==========================================
+
+function setViewMode(mode) {
+    currentViewMode = mode;
+    if (mode === 'masonry') {
+        grid.className = 'vinyl-grid view-masonry';
+        if (btnViewGrid) btnViewGrid.classList.add('active');
+        if (btnViewList) btnViewList.classList.remove('active');
+    } else {
+        grid.className = 'vinyl-grid view-list';
+        if (btnViewList) btnViewList.classList.add('active');
+        if (btnViewGrid) btnViewGrid.classList.remove('active');
+    }
+    renderItems(searchInput.value);
+}
+
+if (btnViewGrid) btnViewGrid.addEventListener('click', () => setViewMode('masonry'));
+if (btnViewList) btnViewList.addEventListener('click', () => setViewMode('list'));
+
+// ==========================================
+// 2. AUTHENTIFICATION SUPABASE
+// ==========================================
 
 async function checkUserSession() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -43,14 +94,19 @@ async function checkUserSession() {
 
 function updateUIForAuth(user) {
     currentUser = user;
+    const authIcon = btnAuth.querySelector('.auth-icon');
+    const authText = btnAuth.querySelector('.auth-text');
+
     if (user) {
-        btnAuth.textContent = '🔓 Déconnexion';
+        if (authIcon) authIcon.textContent = '🔓';
+        if (authText) authText.textContent = 'Déconnexion';
         btnAuth.className = 'btn btn-logout';
-        adminPanel.style.display = 'block';
+        if (adminPanel) adminPanel.style.display = 'block';
     } else {
-        btnAuth.textContent = '🔒 Connexion Admin';
+        if (authIcon) authIcon.textContent = '🔒';
+        if (authText) authText.textContent = 'Connexion Admin';
         btnAuth.className = 'btn btn-login';
-        adminPanel.style.display = 'none';
+        if (adminPanel) adminPanel.style.display = 'none';
     }
     renderItems(searchInput.value);
 }
@@ -60,7 +116,9 @@ btnAuth.addEventListener('click', () => {
     else loginModal.style.display = 'flex';
 });
 
-btnCloseLogin.addEventListener('click', () => loginModal.style.display = 'none');
+btnCloseLogin.addEventListener('click', () => {
+    loginModal.style.display = 'none';
+});
 
 loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -68,14 +126,17 @@ loginForm.addEventListener('submit', async (e) => {
     const password = document.getElementById('login-password').value;
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) alert("Échec : " + error.message);
-    else {
+    if (error) {
+        alert("Échec de connexion : " + error.message);
+    } else {
         loginModal.style.display = 'none';
         loginForm.reset();
     }
 });
 
-// --- Chargement & Sauvegarde BDD ---
+// ==========================================
+// 3. BASE DE DONNÉES SUPABASE (CRUD)
+// ==========================================
 
 async function fetchItems() {
     const { data, error } = await supabase
@@ -98,12 +159,12 @@ async function fetchItems() {
         type: item.type || 'vinyl'
     }));
 
-    renderItems();
+    setViewMode(currentViewMode);
     updateStats();
 }
 
 async function addItem(item) {
-    if (!currentUser) return alert("Connexion requise");
+    if (!currentUser) return alert("Connexion requise pour ajouter des éléments.");
 
     const { error } = await supabase.from('vinyls').insert([{
         id: item.id,
@@ -115,7 +176,7 @@ async function addItem(item) {
         type: item.type
     }]);
 
-    if (error) return alert("Erreur : " + error.message);
+    if (error) return alert("Erreur Supabase : " + error.message);
 
     items.unshift(item);
     renderItems(searchInput.value);
@@ -123,17 +184,74 @@ async function addItem(item) {
 }
 
 window.deleteItem = async function(id) {
-    if (!currentUser || !confirm("Supprimer cet élément ?")) return;
+    if (!currentUser || !confirm("Supprimer cet élément de votre médiathèque ?")) return;
 
     const { error } = await supabase.from('vinyls').delete().eq('id', id);
-    if (error) return alert("Erreur : " + error.message);
+    if (error) return alert("Erreur lors de la suppression : " + error.message);
 
     items = items.filter(i => i.id !== id);
     renderItems(searchInput.value);
     updateStats();
 };
 
-// --- Moteur Multi-APIs ---
+// --- Édition d'un élément ---
+
+window.openEditModal = function(id) {
+    if (!currentUser) return;
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+
+    editIdInput.value = item.id;
+    editTitleInput.value = item.title || '';
+    editArtistInput.value = item.artist || '';
+    editYearInput.value = item.year || '';
+    editGenreInput.value = item.genre || '';
+    editCoverInput.value = item.cover || '';
+    editTypeSelect.value = item.type || 'vinyl';
+
+    editModal.style.display = 'flex';
+};
+
+btnCloseEdit.addEventListener('click', () => {
+    editModal.style.display = 'none';
+});
+
+editForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+
+    const id = parseInt(editIdInput.value, 10);
+    const updatedData = {
+        title: editTitleInput.value.trim(),
+        artist: editArtistInput.value.trim(),
+        year: editYearInput.value.trim(),
+        genre: editGenreInput.value.trim(),
+        cover: editCoverInput.value.trim(),
+        type: editTypeSelect.value
+    };
+
+    const { error } = await supabase
+        .from('vinyls')
+        .update(updatedData)
+        .eq('id', id);
+
+    if (error) {
+        alert("Erreur lors de la modification : " + error.message);
+        return;
+    }
+
+    const index = items.findIndex(i => i.id === id);
+    if (index !== -1) {
+        items[index] = { id, ...updatedData };
+    }
+
+    editModal.style.display = 'none';
+    renderItems(searchInput.value);
+});
+
+// ==========================================
+// 4. MOTEUR MULTI-APIS (RECHERCHE & EAN/ISBN)
+// ==========================================
 
 async function searchAPI(queryOverride = null) {
     const query = queryOverride || apiSearchInput.value.trim();
@@ -145,20 +263,17 @@ async function searchAPI(queryOverride = null) {
 
     try {
         let results = [];
-        if (selectedType === 'vinyl') {
-            results = await searchDiscogs(query);
-        } else if (selectedType === 'book') {
-            results = await searchBooks(query);
-        } else if (selectedType === 'movie') {
-            results = await searchMovies(query);
-        }
+        if (selectedType === 'vinyl') results = await searchDiscogs(query);
+        else if (selectedType === 'book') results = await searchBooks(query);
+        else if (selectedType === 'movie') results = await searchMovies(query);
+
         displayResults(results, selectedType);
     } catch (err) {
         resultsContainer.innerHTML = `<p style="color:#ff5555">Erreur : ${err.message}</p>`;
     }
 }
 
-// 1. Vinyles (Discogs)
+// A. Discogs (Vinyles)
 async function searchDiscogs(query) {
     const isBarcode = /^\d+$/.test(query);
     const param = isBarcode ? `barcode=${encodeURIComponent(query)}` : `q=${encodeURIComponent(query)}`;
@@ -177,14 +292,12 @@ async function searchDiscogs(query) {
     });
 }
 
-// 2. Livres & BDs (Open Library & Google Books API)
-// 2. Livres & BDs (Google Books API + Open Library Fallback)
+// B. Livres & BDs (Google Books + Open Library Fallback)
 async function searchBooks(query) {
     const isIsbn = /^\d+$/.test(query);
     const results = [];
 
     try {
-        // A. Tentative prioritaire avec Google Books
         const googleQuery = isIsbn ? `isbn:${query}` : encodeURIComponent(query);
         const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${googleQuery}&maxResults=8`);
         const data = await res.json();
@@ -192,12 +305,8 @@ async function searchBooks(query) {
         if (data.items && data.items.length > 0) {
             data.items.forEach(item => {
                 const info = item.volumeInfo;
-                let coverUrl = '';
-                
-                if (info.imageLinks) {
-                    coverUrl = info.imageLinks.thumbnail || info.imageLinks.smallThumbnail;
-                    coverUrl = coverUrl.replace('http:', 'https:');
-                }
+                let coverUrl = info.imageLinks ? (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail) : '';
+                if (coverUrl) coverUrl = coverUrl.replace('http:', 'https:');
 
                 results.push({
                     title: info.title || 'Titre inconnu',
@@ -210,10 +319,9 @@ async function searchBooks(query) {
             return results;
         }
     } catch (err) {
-        console.warn("Échec Google Books, tentative Open Library...", err);
+        console.warn("Google Books error:", err);
     }
 
-    // B. Fallback / Secours via Open Library
     try {
         if (isIsbn) {
             const coverUrl = `https://covers.openlibrary.org/b/isbn/${query}-L.jpg`;
@@ -229,33 +337,17 @@ async function searchBooks(query) {
                 });
                 return results;
             }
-        } else {
-            const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=6`);
-            const data = await res.json();
-            if (data.docs) {
-                data.docs.forEach(doc => {
-                    results.push({
-                        title: doc.title,
-                        artist: doc.author_name ? doc.author_name[0] : 'Auteur inconnu',
-                        year: doc.first_publish_year ? String(doc.first_publish_year) : '',
-                        genre: 'Livre / BD',
-                        cover: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : ''
-                    });
-                });
-                return results;
-            }
         }
     } catch (err) {
-        console.error("Erreur Open Library :", err);
+        console.error("OpenLibrary error:", err);
     }
 
     return results;
 }
 
-// 3. Films & DVDs (TMDB ou Open Movie Database)
+// C. DVDs & Blu-ray (TMDB ou OMDb/iTunes Fallback)
 async function searchMovies(query) {
     if (!TMDB_API_KEY) {
-        // Mode dégradé si pas de clé TMDB : Recherche OMDb publique / ITunes
         const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=movie&limit=6`);
         const data = await res.json();
         return (data.results || []).map(m => ({
@@ -278,7 +370,6 @@ async function searchMovies(query) {
     }));
 }
 
-// Affichage des candidats à l'ajout
 function displayResults(results, type) {
     resultsContainer.innerHTML = '';
     if (!results || results.length === 0) {
@@ -287,17 +378,35 @@ function displayResults(results, type) {
     }
 
     results.forEach(item => {
+        // Détection de doublon (même titre et même artiste/auteur pour la même catégorie)
+        const isDuplicate = items.some(existingItem => 
+            existingItem.type === type &&
+            existingItem.title.toLowerCase().trim() === item.title.toLowerCase().trim() &&
+            existingItem.artist.toLowerCase().trim() === item.artist.toLowerCase().trim()
+        );
+
         const div = document.createElement('div');
-        div.className = 'result-item';
+        div.className = `result-item ${isDuplicate ? 'is-duplicate' : ''}`;
+        
+        const duplicateBadgeHTML = isDuplicate 
+            ? '<span class="badge-duplicate">⚠️ Déjà dans la collection</span>' 
+            : '';
+
         div.innerHTML = `
             <img src="${item.cover || 'https://via.placeholder.com/50'}" alt="">
             <div class="result-info">
-                <div class="result-title">${item.title}</div>
+                <div class="result-title">${item.title} ${duplicateBadgeHTML}</div>
                 <div class="result-sub">${item.artist} ${item.year ? `(${item.year})` : ''}</div>
             </div>
         `;
 
         div.onclick = () => {
+            // Alerte si l'élément est déjà présent
+            if (isDuplicate) {
+                const confirmAdd = confirm(`" ${item.title} " est déjà dans ta bibliothèque.\n\nSouhaites-tu tout de même l'ajouter en double ?`);
+                if (!confirmAdd) return;
+            }
+
             addItem({
                 id: Date.now(),
                 title: item.title,
@@ -307,6 +416,7 @@ function displayResults(results, type) {
                 cover: item.cover,
                 type: type
             });
+
             resultsContainer.style.display = 'none';
             apiSearchInput.value = '';
         };
@@ -314,12 +424,10 @@ function displayResults(results, type) {
         resultsContainer.appendChild(div);
     });
 }
-// --- Scanner avec support du Zoom et Focus ---
 
-const zoomContainer = document.getElementById('zoom-container');
-const zoomSlider = document.getElementById('zoom-slider');
-const zoomValue = document.getElementById('zoom-value');
-let videoTrack = null;
+// ==========================================
+// 5. SCANNER DE CODE-BARRES & ZOOM MATÉRIEL
+// ==========================================
 
 async function startScanner() {
     scannerModal.style.display = 'flex';
@@ -340,8 +448,8 @@ async function startScanner() {
         qrbox: { width: 280, height: 140 },
         videoConstraints: {
             facingMode: { exact: "environment" },
-            focusMode: "continuous", // Force la mise au point continue
-            width: { min: 1280, ideal: 1920 }, // Force la haute résolution pour la netteté
+            focusMode: "continuous",
+            width: { min: 1280, ideal: 1920 },
             height: { min: 720, ideal: 1080 }
         }
     };
@@ -358,12 +466,8 @@ async function startScanner() {
             },
             () => {}
         );
-
-        // Récupérer la piste vidéo active pour piloter le zoom matériel
         initHardwareZoom();
-
     } catch (err) {
-        // Fallback en mode simple si la caméra dédiée échoue
         try {
             await html5QrCode.start(
                 { facingMode: "environment" },
@@ -378,7 +482,7 @@ async function startScanner() {
             );
             initHardwareZoom();
         } catch (fallbackErr) {
-            alert("Erreur caméra : " + fallbackErr);
+            alert("Erreur d'accès à la caméra : " + fallbackErr);
             stopScanner();
         }
     }
@@ -392,27 +496,24 @@ function initHardwareZoom() {
         videoTrack = videoElement.srcObject.getVideoTracks()[0];
         const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
 
-        // Si la caméra supporte le zoom
         if (capabilities.zoom) {
             zoomSlider.min = capabilities.zoom.min || 1;
-            zoomSlider.max = Math.min(capabilities.zoom.max || 5, 5); // Limite à 5x pour garder la lisibilité
+            zoomSlider.max = Math.min(capabilities.zoom.max || 5, 5);
             zoomSlider.step = capabilities.zoom.step || 0.1;
             zoomSlider.value = capabilities.zoom.min || 1;
             zoomValue.textContent = `${zoomSlider.value}x`;
 
             zoomContainer.style.display = 'flex';
 
-            // Écouter le slider de zoom
             zoomSlider.oninput = (e) => {
                 const val = parseFloat(e.target.value);
                 zoomValue.textContent = `${val.toFixed(1)}x`;
-                videoTrack.applyConstraints({
-                    advanced: [{ zoom: val }]
-                }).catch(err => console.warn("Erreur application zoom :", err));
+                videoTrack.applyConstraints({ advanced: [{ zoom: val }] })
+                    .catch(err => console.warn("Zoom error:", err));
             };
         }
     } catch (e) {
-        console.warn("Le zoom matériel n'est pas supporté sur ce navigateur/appareil.", e);
+        console.warn("Le zoom matériel n'est pas supporté par ce système.", e);
     }
 }
 
@@ -427,7 +528,9 @@ async function stopScanner() {
     scannerModal.style.display = 'none';
 }
 
-// --- Rendu & Filtres UI ---
+// ==========================================
+// 6. RENDU GRAPHIQUE ET FILTRES
+// ==========================================
 
 function renderItems(filterText = '') {
     grid.innerHTML = '';
@@ -440,7 +543,7 @@ function renderItems(filterText = '') {
     });
 
     if (filtered.length === 0) {
-        grid.innerHTML = '<p style="color:var(--text-secondary); grid-column:1/-1;">Aucun élément dans cette catégorie.</p>';
+        grid.innerHTML = '<p style="color:var(--text-secondary); grid-column:1/-1;">Aucun élément trouvé dans cette catégorie.</p>';
         return;
     }
 
@@ -449,11 +552,18 @@ function renderItems(filterText = '') {
         const card = document.createElement('div');
         card.className = 'vinyl-card';
 
-        const deleteBtnHTML = currentUser ? `<button class="btn-delete" onclick="deleteItem(${item.id})">✕</button>` : '';
+        // Boutons Édition & Suppression réservés à l'admin connecté
+        const actionsHTML = currentUser ? `
+            <div class="card-actions">
+                <button class="btn-card-action btn-edit-card" onclick="openEditModal(${item.id})" title="Modifier">✏️</button>
+                <button class="btn-card-action btn-delete-card" onclick="deleteItem(${item.id})" title="Supprimer">✕</button>
+            </div>
+        ` : '';
+
         const typeIcons = { vinyl: '💿 Vinyle', book: '📚 Livre / BD', movie: '🎬 DVD' };
 
         card.innerHTML = `
-            ${deleteBtnHTML}
+            ${actionsHTML}
             <img class="cover-img" src="${item.cover || defaultCover}" alt="${item.title}" onerror="this.src='${defaultCover}'">
             <div class="card-body">
                 <span class="type-tag">${typeIcons[item.type] || 'Œuvre'}</span>
@@ -469,7 +579,7 @@ function updateStats() {
     stats.textContent = `${items.length} élément(s)`;
 }
 
-// Gestion des onglets de catégorie
+// Filtres catégories (Tous / Vinyles / Livres / Films)
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -479,12 +589,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     });
 });
 
-// Événements
+// Événements généraux
 btnSearch.addEventListener('click', () => searchAPI());
 btnScan.addEventListener('click', startScanner);
 btnCloseScanner.addEventListener('click', stopScanner);
 searchInput.addEventListener('input', (e) => renderItems(e.target.value));
 
-// Initialisation
+// Initialisation au chargement
 checkUserSession();
 fetchItems();
