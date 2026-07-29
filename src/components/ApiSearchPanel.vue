@@ -46,7 +46,7 @@
           📷
         </button>
 
-        <!-- Input caché capture photo -->
+        <!-- Input caché capture photo (fallback) -->
         <input 
           ref="fileInputRef" 
           type="file" 
@@ -62,7 +62,7 @@
       </button>
     </form>
 
-    <!-- 📷 MODALE SCANNER EN DIRECT -->
+    <!-- 📷 1. MODALE SCANNER VIDÉO EN DIRECT -->
     <div v-if="isScanning" class="scanner-modal">
       <div class="scanner-container">
         <div class="scanner-header">
@@ -74,15 +74,38 @@
           <div id="interactive-scanner" class="scanner-video"></div>
         </div>
 
+        <!-- Contrôles du zoom vidéo -->
+        <div class="scanner-zoom-controls">
+          <button 
+            type="button" 
+            class="btn-zoom" 
+            @click="zoomScannerOut" 
+            :disabled="scannerZoomValue <= scannerZoomMin"
+          >
+            🔍 -
+          </button>
+
+          <span class="zoom-label">{{ parseFloat(scannerZoomValue).toFixed(1) }}x</span>
+
+          <button 
+            type="button" 
+            class="btn-zoom" 
+            @click="zoomScannerIn" 
+            :disabled="scannerZoomValue >= scannerZoomMax"
+          >
+            🔍 +
+          </button>
+        </div>
+
         <p class="scanner-hint">Pointez la caméra vers le code EAN / ISBN</p>
       </div>
     </div>
 
-    <!-- 🔍 MODALE ZOOM & RECADRAGE POUR LA PHOTO CAPTURÉE -->
+    <!-- 🔍 2. MODALE CROPPER POUR LA PHOTO IMPORTÉE (FALLBACK) -->
     <div v-if="isCropping" class="crop-modal">
       <div class="crop-container">
         <div class="crop-header">
-          <span>🔎 Zoomer sur le code-barres</span>
+          <span>🔎 Zoomer & Recadrer le code-barres</span>
           <button class="btn-close-scanner" @click="cancelCrop">✕ Annuler</button>
         </div>
 
@@ -91,16 +114,16 @@
         </div>
 
         <div class="crop-actions">
-          <button class="btn-crop-zoom" @click="zoomIn">🔍+</button>
-          <button class="btn-crop-zoom" @click="zoomOut">🔍-</button>
-          <button class="btn-crop-submit" @click="confirmCropAndScan" :disabled="loading">
+          <button type="button" class="btn-crop-zoom" @click="cropZoomIn">🔍 +</button>
+          <button type="button" class="btn-crop-zoom" @click="cropZoomOut">🔍 -</button>
+          <button type="button" class="btn-crop-submit" @click="confirmCropAndScan" :disabled="loading">
             {{ loading ? 'Analyse...' : '✅ Valider & Analyser' }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Container caché pour l'analyse Html5Qrcode -->
+    <!-- Container caché pour l'analyse d'image Cropper -->
     <div id="interactive-scanner-hidden" style="display: none;"></div>
 
     <!-- RÉSULTATS DE RECHERCHE -->
@@ -160,7 +183,7 @@
 import { ref, computed, onUnmounted, nextTick } from 'vue';
 import { Html5Qrcode } from 'html5-qrcode';
 import Cropper from 'cropperjs';
-import 'cropperjs/dist/cropper.css';
+
 import { useCollectionStore } from '../stores/collection';
 import { getFormatLabel } from '../constants/formats';
 
@@ -172,12 +195,20 @@ const query = ref('');
 const loading = ref(false);
 const results = ref([]);
 
-// Scanner & Fallback refs
+// Scanner refs
 const isScanning = ref(false);
 const fileInputRef = ref(null);
 let html5QrCodeScanner = null;
 
-// Zoom & Crop refs
+// Zoom scanner vidéo
+const scannerZoomValue = ref(1);
+const scannerZoomMin = ref(1);
+const scannerZoomMax = ref(3);
+let scannerVideoElement = null;
+let scannerVideoTrack = null;
+let isHardwareZoom = false;
+
+// Fallback photo Cropper refs
 const isCropping = ref(false);
 const rawImageSrc = ref('');
 const cropImageRef = ref(null);
@@ -204,7 +235,7 @@ function getExistingItem(resItem) {
   }) || null;
 }
 
-// 📷 CLIC SUR LE BOUTON SCANNER
+// 📷 CLIC BOUTON SCANNER
 async function handleScanClick() {
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     startLiveScanner();
@@ -216,13 +247,14 @@ async function handleScanClick() {
 // 🔴 SCANNER VIDÉO EN DIRECT
 async function startLiveScanner() {
   isScanning.value = true;
+  scannerZoomValue.value = 1;
   await nextTick();
 
   try {
     html5QrCodeScanner = new Html5Qrcode("interactive-scanner");
     await html5QrCodeScanner.start(
       { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 250, height: 150 } },
+      { fps: 15, qrbox: { width: 250, height: 140 } },
       (decodedText) => {
         query.value = decodedText;
         stopScanner();
@@ -230,13 +262,75 @@ async function startLiveScanner() {
       },
       () => {}
     );
+
+    setupScannerZoom();
   } catch (err) {
     stopScanner();
     fileInputRef.value?.click();
   }
 }
 
+function setupScannerZoom() {
+  let attempts = 0;
+  const interval = setInterval(() => {
+    scannerVideoElement = document.querySelector("#interactive-scanner video");
+    attempts++;
+
+    if (scannerVideoElement && scannerVideoElement.srcObject) {
+      clearInterval(interval);
+      const stream = scannerVideoElement.srcObject;
+      scannerVideoTrack = stream.getVideoTracks()[0];
+
+      const capabilities = scannerVideoTrack?.getCapabilities ? scannerVideoTrack.getCapabilities() : {};
+
+      if (capabilities.zoom) {
+        isHardwareZoom = true;
+        scannerZoomMin.value = capabilities.zoom.min || 1;
+        scannerZoomMax.value = Math.min(capabilities.zoom.max || 4, 4);
+        scannerZoomValue.value = capabilities.zoom.min || 1;
+      } else {
+        isHardwareZoom = false;
+        scannerZoomMin.value = 1;
+        scannerZoomMax.value = 3;
+        scannerZoomValue.value = 1;
+      }
+    }
+
+    if (attempts > 20) clearInterval(interval);
+  }, 200);
+}
+
+function zoomScannerIn() {
+  if (scannerZoomValue.value < scannerZoomMax.value) {
+    scannerZoomValue.value = Math.min(parseFloat((scannerZoomValue.value + 0.3).toFixed(1)), scannerZoomMax.value);
+    applyScannerZoom();
+  }
+}
+
+function zoomScannerOut() {
+  if (scannerZoomValue.value > scannerZoomMin.value) {
+    scannerZoomValue.value = Math.max(parseFloat((scannerZoomValue.value - 0.3).toFixed(1)), scannerZoomMin.value);
+    applyScannerZoom();
+  }
+}
+
+function applyScannerZoom() {
+  const factor = parseFloat(scannerZoomValue.value);
+  if (isHardwareZoom && scannerVideoTrack) {
+    scannerVideoTrack.applyConstraints({ advanced: [{ zoom: factor }] }).catch(() => {});
+  } else if (scannerVideoElement) {
+    scannerVideoElement.style.transform = `scale(${factor})`;
+    scannerVideoElement.style.transformOrigin = `center center`;
+  }
+}
+
 function stopScanner() {
+  if (scannerVideoElement) {
+    scannerVideoElement.style.transform = 'none';
+  }
+  scannerVideoElement = null;
+  scannerVideoTrack = null;
+
   if (html5QrCodeScanner && isScanning.value) {
     html5QrCodeScanner.stop().catch(() => {}).finally(() => {
       isScanning.value = false;
@@ -246,7 +340,7 @@ function stopScanner() {
   }
 }
 
-// 📸 FALLBACK PHOTO : RÉCEPTION DE LA PHOTO & OUVERTURE DU CROPPER
+// 📸 FALLBACK PHOTO : GESTION D'IMAGE AVEC CROPPER
 function handleFileUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -264,27 +358,29 @@ function handleFileUpload(event) {
 
 function initCropper() {
   if (cropperInstance) cropperInstance.destroy();
-  
+
   cropperInstance = new Cropper(cropImageRef.value, {
     viewMode: 1,
     dragMode: 'move',
-    autoCropArea: 0.8,
+    autoCropArea: 0.85,
     restore: false,
     guides: true,
     center: true,
     highlight: false,
     cropBoxMovable: true,
     cropBoxResizable: true,
-    toggleDragModeOnDblclick: false,
+    zoomable: true,
+    zoomOnTouch: true,
+    zoomOnWheel: true,
   });
 }
 
-function zoomIn() {
-  cropperInstance?.zoom(0.1);
+function cropZoomIn() {
+  cropperInstance?.zoom(0.15);
 }
 
-function zoomOut() {
-  cropperInstance?.zoom(-0.1);
+function cropZoomOut() {
+  cropperInstance?.zoom(-0.15);
 }
 
 function cancelCrop() {
@@ -293,7 +389,6 @@ function cancelCrop() {
   rawImageSrc.value = '';
 }
 
-// 🔍 VALIDATION DU RECADRAGE & ANALYSE DE L'IMAGE ZOOMÉE
 async function confirmCropAndScan() {
   if (!cropperInstance) return;
   loading.value = true;
@@ -320,7 +415,7 @@ async function confirmCropAndScan() {
       cancelCrop();
       searchApi();
     } catch (err) {
-      alert("Aucun code-barres n'a été détecté dans la zone sélectionnée. Essaye de zoomer plus près du code-barres.");
+      alert("Aucun code-barres détecté. Essayez de zoomer plus près du code-barres.");
     } finally {
       loading.value = false;
     }
@@ -332,7 +427,7 @@ onUnmounted(() => {
   if (cropperInstance) cropperInstance.destroy();
 });
 
-// RECHERCHE API
+// 🔍 RECHERCHE API (Discogs / OpenLibrary / TMDB)
 const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN;
 
 async function searchApi() {
@@ -409,6 +504,9 @@ async function moveToCollection(existingItem) {
 </script>
 
 <style scoped>
+/* 🟢 Importation du CSS de Cropperjs compatible Vite/PWA */
+@import 'cropperjs/dist/cropper.css';
+
 .search-panel { display: flex; flex-direction: column; gap: 16px; }
 .media-type-tabs { display: flex; gap: 8px; }
 .tab-btn { flex: 1; padding: 12px; background: #18181b; border: 1px solid #27272a; color: #a1a1aa; border-radius: 12px; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
@@ -420,116 +518,62 @@ async function moveToCollection(existingItem) {
 .btn-scan-inside { position: absolute; right: 8px; background: transparent; border: none; font-size: 1.3rem; padding: 8px; cursor: pointer; border-radius: 8px; }
 
 .hidden-file-input { display: none; }
-
 .btn-submit { width: 100%; padding: 14px; background: #3b82f6; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
 
-/* MODALE SCANNER VIDÉO */
+/* 1. MODALE SCANNER VIDÉO */
 .scanner-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.95); display: flex; justify-content: center; align-items: center; z-index: 4000; padding: 16px; }
-.scanner-container { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 20px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 16px; align-items: center; }
+.scanner-container { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 20px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .scanner-header { display: flex; justify-content: space-between; align-items: center; width: 100%; color: #fff; font-weight: 700; }
 .btn-close-scanner { background: rgba(255, 255, 255, 0.1); border: none; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; cursor: pointer; }
 .video-wrapper { width: 100%; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; background: #000; }
 .scanner-video { width: 100%; height: 100%; }
 .scanner-hint { font-size: 0.8rem; color: #a1a1aa; text-align: center; margin: 0; }
 
-/* 🔎 MODALE ZOOM & RECADRAGE CROPPER (STYLE REPRIS ET OPTIMISÉ) */
-.crop-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.95);
+:deep(#interactive-scanner video) {
+  transition: transform 0.1s ease-out;
+  object-fit: cover;
+}
+
+.scanner-zoom-controls {
   display: flex;
+  align-items: center;
   justify-content: center;
-  align-items: center;
-  z-index: 4000;
-  padding: 16px;
-}
-
-.crop-container {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 20px;
-  padding: 20px;
-  width: 100%;
-  max-width: 420px;
-  display: flex;
-  flex-direction: column;
   gap: 16px;
-}
-
-.crop-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: #fff;
-  font-weight: 700;
-}
-
-.crop-image-wrapper {
-  width: 100%;
-  height: 300px;
-  background: #000;
-  border-radius: 12px;
-  overflow: hidden;
-  position: relative;
-}
-
-.crop-image {
-  max-width: 100%;
-  display: block;
-}
-
-/* BARRE D'ACTIONS DE RECADRAGE & ZOOM */
-.crop-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
   width: 100%;
 }
 
-.btn-crop-zoom {
+.btn-zoom {
   background: #27272a;
   border: 1px solid #3f3f46;
   color: #fff;
-  padding: 12px 16px;
-  border-radius: 10px;
-  font-weight: 700;
-  font-size: 1rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s ease;
-  min-width: 48px;
-}
-
-.btn-crop-zoom:hover {
-  background: #3f3f46;
-}
-
-.btn-crop-submit {
-  flex: 1;
-  background: #3b82f6;
-  color: #fff;
-  border: none;
-  padding: 12px;
-  border-radius: 10px;
+  padding: 8px 16px;
+  border-radius: 8px;
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.2s;
 }
 
-.btn-crop-submit:hover:not(:disabled) {
-  background: #2563eb;
+.btn-zoom:hover:not(:disabled) { background: #3f3f46; }
+.btn-zoom:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.zoom-label {
+  color: #a1a1aa;
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-width: 45px;
+  text-align: center;
 }
 
-.btn-crop-submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+/* 2. MODALE CROPPER PHOTO */
+.crop-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.95); display: flex; justify-content: center; align-items: center; z-index: 4000; padding: 16px; }
+.crop-container { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 20px; width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 16px; }
+.crop-header { display: flex; justify-content: space-between; align-items: center; color: #fff; font-weight: 700; }
+.crop-image-wrapper { width: 100%; height: 300px; background: #000; border-radius: 12px; overflow: hidden; position: relative; }
+.crop-image { max-width: 100%; display: block; }
+.crop-actions { display: flex; gap: 10px; align-items: center; width: 100%; }
+.btn-crop-zoom { background: #27272a; border: 1px solid #3f3f46; color: #fff; padding: 12px 16px; border-radius: 10px; font-weight: 700; font-size: 0.9rem; cursor: pointer; min-width: 48px; }
+.btn-crop-submit { flex: 1; background: #3b82f6; color: #fff; border: none; padding: 12px; border-radius: 10px; font-weight: 700; font-size: 0.9rem; cursor: pointer; }
 
 /* RÉSULTATS */
 .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-top: 12px; }

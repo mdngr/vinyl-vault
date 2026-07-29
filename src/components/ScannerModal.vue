@@ -8,17 +8,27 @@
 
       <div id="reader-vue" class="scanner-viewport"></div>
 
-      <!-- Contrôle du Zoom Matériel -->
+      <!-- Contrôle du Zoom par Boutons (Affiche dès qu'on détecte la vidéo) -->
       <div v-if="hasZoomSupport" class="zoom-controls">
-        <span>🔍 Zoom: {{ zoomValue }}x</span>
-        <input 
-          type="range" 
-          :min="zoomMin" 
-          :max="zoomMax" 
-          step="0.1" 
-          v-model="zoomValue" 
-          @input="applyZoom"
-        />
+        <button 
+          type="button" 
+          class="btn-zoom" 
+          @click="zoomOut" 
+          :disabled="zoomValue <= zoomMin"
+        >
+          🔍 -
+        </button>
+
+        <span class="zoom-label">{{ parseFloat(zoomValue).toFixed(1) }}x</span>
+
+        <button 
+          type="button" 
+          class="btn-zoom" 
+          @click="zoomIn" 
+          :disabled="zoomValue >= zoomMax"
+        >
+          🔍 +
+        </button>
       </div>
     </div>
   </div>
@@ -36,11 +46,13 @@ const emit = defineEmits(['close', 'scan']);
 
 let html5QrCode = null;
 let videoTrack = null;
+let videoElement = null;
 
 const hasZoomSupport = ref(false);
+const isHardwareZoom = ref(false);
 const zoomValue = ref(1);
 const zoomMin = ref(1);
-const zoomMax = ref(5);
+const zoomMax = ref(3);
 
 watch(() => props.isOpen, async (newVal) => {
   if (newVal) {
@@ -78,38 +90,84 @@ async function startScanner() {
       },
       () => {}
     );
-    initHardwareZoom();
+
+    setupZoom();
   } catch (err) {
     console.error("Erreur scanner caméra :", err);
     close();
   }
 }
 
-function initHardwareZoom() {
-  try {
-    const videoElement = document.querySelector("#reader-vue video");
-    if (!videoElement || !videoElement.srcObject) return;
+function setupZoom() {
+  let attempts = 0;
 
-    videoTrack = videoElement.srcObject.getVideoTracks()[0];
-    const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+  const checkVideo = setInterval(() => {
+    videoElement = document.querySelector("#reader-vue video");
+    attempts++;
 
-    if (capabilities.zoom) {
-      zoomMin.value = capabilities.zoom.min || 1;
-      zoomMax.value = Math.min(capabilities.zoom.max || 5, 5);
-      zoomValue.value = capabilities.zoom.min || 1;
+    if (videoElement && videoElement.srcObject) {
+      clearInterval(checkVideo);
+
+      const stream = videoElement.srcObject;
+      videoTrack = stream.getVideoTracks()[0];
+
+      const capabilities = videoTrack?.getCapabilities ? videoTrack.getCapabilities() : {};
+
+      if (capabilities.zoom) {
+        // Zoom Optique / Matériel (Android)
+        isHardwareZoom.value = true;
+        zoomMin.value = capabilities.zoom.min || 1;
+        zoomMax.value = Math.min(capabilities.zoom.max || 4, 4);
+        zoomValue.value = capabilities.zoom.min || 1;
+      } else {
+        // Zoom Numérique CSS (iOS / Safari / Web)
+        isHardwareZoom.value = false;
+        zoomMin.value = 1;
+        zoomMax.value = 3;
+        zoomValue.value = 1;
+      }
+
       hasZoomSupport.value = true;
     }
-  } catch (e) {}
+
+    if (attempts > 20) {
+      clearInterval(checkVideo);
+    }
+  }, 200);
+}
+
+function zoomIn() {
+  if (zoomValue.value < zoomMax.value) {
+    zoomValue.value = Math.min(parseFloat((zoomValue.value + 0.3).toFixed(1)), zoomMax.value);
+    applyZoom();
+  }
+}
+
+function zoomOut() {
+  if (zoomValue.value > zoomMin.value) {
+    zoomValue.value = Math.max(parseFloat((zoomValue.value - 0.3).toFixed(1)), zoomMin.value);
+    applyZoom();
+  }
 }
 
 function applyZoom() {
-  if (videoTrack) {
-    videoTrack.applyConstraints({ advanced: [{ zoom: parseFloat(zoomValue.value) }] });
+  const zoomFactor = parseFloat(zoomValue.value);
+
+  if (isHardwareZoom.value && videoTrack) {
+    videoTrack.applyConstraints({ advanced: [{ zoom: zoomFactor }] }).catch(() => {});
+  } else if (videoElement) {
+    videoElement.style.transform = `scale(${zoomFactor})`;
+    videoElement.style.transformOrigin = `center center`;
   }
 }
 
 async function stopScanner() {
+  if (videoElement) {
+    videoElement.style.transform = 'none';
+  }
+
   videoTrack = null;
+  videoElement = null;
   hasZoomSupport.value = false;
 
   if (html5QrCode && html5QrCode.isScanning) {
@@ -152,6 +210,12 @@ function close() {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  color: #fff;
+}
+
+.scanner-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 .scanner-viewport {
@@ -159,19 +223,51 @@ function close() {
   border-radius: 12px;
   overflow: hidden;
   background: #000;
+  position: relative;
 }
 
+:deep(#reader-vue video) {
+  transition: transform 0.1s ease-out;
+  object-fit: cover;
+}
+
+/* 🔘 BARRE DE ZOMM AVEC BOUTONS */
 .zoom-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  gap: 16px;
   margin-top: 16px;
-  font-size: 0.85rem;
-  color: #a1a1aa;
+  width: 100%;
 }
 
-.zoom-controls input[type="range"] {
-  flex: 1;
+.btn-zoom {
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-zoom:hover:not(:disabled) {
+  background: #3f3f46;
+}
+
+.btn-zoom:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.zoom-label {
+  color: #a1a1aa;
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-width: 45px;
+  text-align: center;
 }
 
 .btn-close {
