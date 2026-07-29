@@ -1,6 +1,6 @@
 <template>
   <div class="app-shell">
-    <!-- En-tête fixe compact avec gestion Safe Area iOS -->
+    <!-- En-tête fixe compact avec Safe Area iOS -->
     <header class="app-header">
       <div class="logo">
         <span class="logo-icon">🏛️</span>
@@ -17,46 +17,61 @@
            ONGLET 1 : BIBLIOTHÈQUE / COLLECTION
            =================================================================== -->
       <section v-if="currentTab === 'library'" class="tab-page">
+        <!-- BARRE DE RECHERCHE & COMMANDES ÉPURÉES -->
         <div class="toolbar">
-          <!-- Recherche et Bouton Dé côte à côte -->
-          <div class="toolbar-top">
-            <div class="search-box">
+          <!-- Ligne 1 : Champ de recherche principal + Tirage au sort -->
+          <div class="search-row">
+            <div class="search-input-wrapper">
+              <span class="search-icon">🔍</span>
               <input 
                 v-model="collectionStore.searchQuery" 
                 type="text" 
-                placeholder="🔍 Filtrer mes œuvres..."
+                placeholder="Rechercher dans mes œuvres..."
               />
+              <button 
+                v-if="collectionStore.searchQuery" 
+                class="btn-clear" 
+                @click="collectionStore.searchQuery = ''"
+              >
+                ✕
+              </button>
             </div>
-            <button class="btn btn-lucky" @click="runLuckyDip" title="Tirer au sort">
+            
+            <button class="btn-icon btn-lucky" @click="runLuckyDip" title="Tirer au sort">
               🎲
             </button>
           </div>
 
-          <!-- Filtres + Toggle Wishlist + Switcher de vue -->
-          <div class="toolbar-middle">
-            <!-- Bouton bascule Wishlist -->
+          <!-- Ligne 2 : Filtres rapides (Wishlist, Catégories, Tri) -->
+          <div class="controls-row">
+            <!-- Toggle Wishlist -->
             <button 
-              class="btn-wishlist-toggle"
+              class="chip-btn chip-wishlist"
               :class="{ active: collectionStore.showWishlistOnly }"
               @click="collectionStore.showWishlistOnly = !collectionStore.showWishlistOnly"
             >
               ✨ Wishlist
             </button>
 
-            <!-- Filtres par catégorie -->
-            <div class="tabs">
-              <button 
-                v-for="tab in filterTabs" 
-                :key="tab.id" 
-                class="tab-btn" 
-                :class="{ active: collectionStore.activeTypeFilter === tab.id }"
-                @click="collectionStore.activeTypeFilter = tab.id"
-              >
-                {{ tab.label }}
-              </button>
-            </div>
+            <!-- Dropdown Catégories -->
+            <select v-model="collectionStore.activeTypeFilter" class="select-chip">
+              <option value="all">📂 Tout</option>
+              <option value="vinyl">💿 Vinyles</option>
+              <option value="book">📚 Livres</option>
+              <option value="movie">🎬 Films</option>
+            </select>
 
-            <!-- Switcher Grille / Liste -->
+            <!-- Bouton Options de Tri -->
+            <button class="chip-btn chip-sort" @click="showSortModal = true">
+              <span>{{ currentSortLabel }}</span>
+              <span class="sort-arrow">{{ collectionStore.sortOrder === 'asc' ? '⬆️' : '⬇️' }}</span>
+            </button>
+          </div>
+
+          <!-- Ligne 3 : Compteur d'éléments + Sélecteur de Vue (Grille / Liste) -->
+          <div class="stats-row">
+            <span class="stats-text">{{ collectionStore.stats }}</span>
+
             <div class="view-toggle">
               <button 
                 class="btn-toggle" 
@@ -76,33 +91,14 @@
               </button>
             </div>
           </div>
-
-          <!-- Barre de Tri -->
-          <div class="sort-bar">
-            <span class="sort-label">Trier par :</span>
-            
-            <select v-model="collectionStore.sortBy" class="sort-select">
-              <option value="title">🔤 Titre</option>
-              <option value="artist">👤 Auteur / Artiste</option>
-              <option value="year">📅 Année</option>
-            </select>
-
-            <button 
-              class="btn-sort-dir" 
-              @click="collectionStore.sortOrder = collectionStore.sortOrder === 'asc' ? 'desc' : 'asc'"
-              :title="collectionStore.sortOrder === 'asc' ? 'Ordre Ascendant' : 'Ordre Descendant'"
-            >
-              {{ collectionStore.sortOrder === 'asc' ? '⬆️ Asc' : '⬇️ Desc' }}
-            </button>
-          </div>
-
-          <div class="stats-bar">{{ collectionStore.stats }}</div>
         </div>
 
+        <!-- Chargement / Contenu -->
         <div v-if="collectionStore.loading" class="loading-state">
           <p>Chargement de la collection...</p>
         </div>
 
+        <!-- Empty State structuré -->
         <EmptyState 
           v-else-if="collectionStore.filteredItems.length === 0"
           :showWishlistOnly="collectionStore.showWishlistOnly"
@@ -111,6 +107,7 @@
           @action="currentTab = 'add'"
         />
 
+        <!-- Liste / Grille des œuvres -->
         <div 
           v-else 
           :class="collectionStore.currentViewMode === 'list' ? 'items-list' : 'items-grid'"
@@ -173,9 +170,7 @@
       </section>
     </main>
 
-    <!-- ===================================================================
-         TAB BAR FIXE EN BAS DE L'ÉCRAN
-         =================================================================== -->
+    <!-- TAB BAR FIXE EN BAS -->
     <nav class="bottom-tab-bar">
       <button 
         class="tab-item" 
@@ -205,7 +200,52 @@
       </button>
     </nav>
 
-    <!-- Modal Lucky Dip -->
+    <!-- MODALE OPTION DE TRI -->
+    <div v-if="showSortModal" class="modal-overlay" @click.self="showSortModal = false">
+      <div class="modal-content sort-modal">
+        <div class="modal-header">
+          <h3>⚡ Trier les œuvres</h3>
+          <button class="btn-close" @click="showSortModal = false">✕</button>
+        </div>
+
+        <div class="sort-options-list">
+          <label class="sort-option-item">
+            <span>Critère de tri</span>
+            <select v-model="collectionStore.sortBy" class="modal-select">
+              <option value="title">🔤 Titre de l'œuvre</option>
+              <option value="artist">👤 Auteur / Artiste</option>
+              <option value="year">📅 Année de sortie</option>
+            </select>
+          </label>
+
+          <label class="sort-option-item">
+            <span>Ordre d'affichage</span>
+            <div class="toggle-group">
+              <button 
+                class="toggle-btn" 
+                :class="{ active: collectionStore.sortOrder === 'asc' }"
+                @click="collectionStore.sortOrder = 'asc'"
+              >
+                ⬆️ Ascendant (A-Z, Croissant)
+              </button>
+              <button 
+                class="toggle-btn" 
+                :class="{ active: collectionStore.sortOrder === 'desc' }"
+                @click="collectionStore.sortOrder = 'desc'"
+              >
+                ⬇️ Descendant (Z-A, Récent)
+              </button>
+            </div>
+          </label>
+        </div>
+
+        <button class="btn btn-primary btn-full modal-confirm" @click="showSortModal = false">
+          Appliquer
+        </button>
+      </div>
+    </div>
+
+    <!-- MODALE LUCKY DIP -->
     <div v-if="showLuckyModal" class="modal-overlay" @click.self="showLuckyModal = false">
       <div class="modal-content lucky-modal">
         <div class="modal-header">
@@ -256,13 +296,18 @@ const collectionStore = useCollectionStore();
 
 const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
 
-// Onglet actif ('library' | 'add' | 'account')
 const currentTab = ref('library');
+const showSortModal = ref(false);
 
 const activeTabTitle = computed(() => {
   if (currentTab.value === 'add') return '➕ Ajout';
   if (currentTab.value === 'account') return '👤 Profil';
   return collectionStore.showWishlistOnly ? '✨ Ma Wishlist' : '📚 Ma Collection';
+});
+
+const currentSortLabel = computed(() => {
+  const map = { title: 'Titre', artist: 'Auteur', year: 'Année' };
+  return map[collectionStore.sortBy] || 'Tri';
 });
 
 // Stats profil
@@ -279,13 +324,6 @@ const countBooks = computed(() => collectionStore.items.filter(i => i.type === '
 const showLuckyModal = ref(false);
 const luckyItem = ref(null);
 const isRolling = ref(false);
-
-const filterTabs = [
-  { id: 'all', label: 'Tout' },
-  { id: 'vinyl', label: '💿 Vinyles' },
-  { id: 'book', label: '📚 Livres' },
-  { id: 'movie', label: '🎬 Films' }
-];
 
 onMounted(() => {
   collectionStore.fetchItems();
@@ -336,7 +374,7 @@ function runLuckyDip() {
 </script>
 
 <style scoped>
-/* Conteneur App Shell */
+/* App Shell & Header */
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -348,7 +386,6 @@ function runLuckyDip() {
   color: #fff;
 }
 
-/* Header Fixe Haut avec Safe Area iOS */
 .app-header {
   height: auto;
   min-height: 52px;
@@ -382,11 +419,10 @@ function runLuckyDip() {
   white-space: nowrap;
 }
 
-/* Zone Défilante Milieu */
 .app-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 12px;
   padding-bottom: calc(80px + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling: touch;
 }
@@ -396,23 +432,161 @@ function runLuckyDip() {
   margin: 0 auto;
 }
 
-/* Page Ajout */
-.add-section-header {
-  text-align: left;
+/* NAVBAR ET COMMANDES OPTIMISÉES */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 16px;
+  background: #18181b;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #27272a;
 }
 
-.add-section-header h2 {
-  font-size: 1.25rem;
-  font-weight: 700;
+.search-row {
+  display: flex;
+  gap: 8px;
 }
 
-.add-section-header .subtitle {
+.search-input-wrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
   font-size: 0.85rem;
+  opacity: 0.6;
+}
+
+.search-input-wrapper input {
+  width: 100%;
+  padding: 8px 30px 8px 32px;
+  background: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+.btn-clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #a1a1aa;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.btn-lucky {
+  background: #8b5cf6;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Ligne des filtres */
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.chip-btn, .select-chip {
+  background: #09090b;
+  border: 1px solid #27272a;
+  color: #a1a1aa;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  height: 32px;
+  flex: 1;
+}
+
+.chip-wishlist.active {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border-color: #f59e0b;
+}
+
+.select-chip {
+  color: #60a5fa;
+  outline: none;
+}
+
+.chip-sort {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* Ligne du compteur et du sélecteur de vue */
+.stats-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 2px;
+}
+
+.stats-text {
+  font-size: 0.75rem;
   color: #a1a1aa;
 }
 
-/* Page Compte */
+.view-toggle {
+  display: flex;
+  background: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.btn-toggle {
+  background: transparent;
+  border: none;
+  color: #a1a1aa;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.btn-toggle.active {
+  background: #27272a;
+  color: #fff;
+}
+
+/* Grille & Liste */
+.items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+  gap: 10px;
+}
+
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Profil & Stats */
 .profile-card {
   background: #18181b;
   border: 1px solid #27272a;
@@ -421,16 +595,15 @@ function runLuckyDip() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
 }
 
 .avatar-circle {
-  width: 70px;
-  height: 70px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   background: #3b82f6;
   color: #fff;
-  font-size: 1.8rem;
+  font-size: 1.6rem;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -438,61 +611,41 @@ function runLuckyDip() {
   margin-bottom: 12px;
 }
 
-.user-email-label {
-  font-size: 0.8rem;
-  color: #a1a1aa;
-}
-
-.user-email-val {
-  font-size: 1rem;
-  font-weight: 700;
-  margin-bottom: 24px;
-}
-
 .account-stats-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  margin-bottom: 24px;
+  margin: 20px 0;
 }
 
 .stat-card {
   background: #09090b;
   border: 1px solid #27272a;
   border-radius: 10px;
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
 }
 
 .stat-value {
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: #60a5fa;
 }
 
 .stat-label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #a1a1aa;
 }
 
-.profile-actions {
-  width: 100%;
-}
-
-.btn-full {
-  width: 100%;
-  padding: 12px;
-}
-
-/* TAB BAR FIXE BAS */
+/* Bottom Tab Bar */
 .bottom-tab-bar {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100vw;
-  height: calc(64px + env(safe-area-inset-bottom));
+  height: calc(60px + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   background: #18181b;
   border-top: 1px solid #27272a;
@@ -510,11 +663,9 @@ function runLuckyDip() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
   flex: 1;
   height: 100%;
   cursor: pointer;
-  transition: color 0.2s ease;
 }
 
 .tab-item.active {
@@ -522,175 +673,27 @@ function runLuckyDip() {
 }
 
 .tab-icon {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
 }
 
 .tab-label {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 600;
 }
 
 .tab-item-add .add-icon-bubble {
   background: #3b82f6;
   color: #fff;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-  transition: transform 0.2s ease;
+  font-size: 0.85rem;
 }
 
-.tab-item-add.active .add-icon-bubble {
-  transform: scale(1.1);
-  background: #2563eb;
-}
-
-/* Toolbar & Layout */
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.toolbar-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.search-box {
-  flex: 1;
-}
-
-.search-box input {
-  width: 100%;
-  padding: 10px 14px;
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  color: #fff;
-}
-
-.btn-lucky {
-  background: #8b5cf6;
-  color: #fff;
-  border: none;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 1.1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.toolbar-middle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-}
-
-.btn-wishlist-toggle {
-  background: #18181b;
-  border: 1px solid #27272a;
-  color: #a1a1aa;
-  padding: 6px 12px;
-  border-radius: 16px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: all 0.2s ease;
-}
-
-.btn-wishlist-toggle.active {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
-  border-color: #f59e0b;
-}
-
-.tabs {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  flex: 1;
-  padding-bottom: 4px;
-  scrollbar-width: none;
-}
-
-.tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.tab-btn {
-  background: #18181b;
-  border: 1px solid #27272a;
-  color: #a1a1aa;
-  padding: 6px 12px;
-  border-radius: 16px;
-  font-size: 0.8rem;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.tab-btn.active {
-  background: #3b82f6;
-  color: #fff;
-  border-color: #3b82f6;
-}
-
-.view-toggle {
-  display: flex;
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 2px;
-  flex-shrink: 0;
-}
-
-.btn-toggle {
-  background: transparent;
-  border: none;
-  color: #a1a1aa;
-  padding: 4px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.btn-toggle.active {
-  background: #27272a;
-  color: #fff;
-}
-
-.stats-bar {
-  font-size: 0.8rem;
-  color: #a1a1aa;
-  text-align: left;
-}
-
-.items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px;
-}
-
-.items-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Modales */
+/* Modales & Tri */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -708,10 +711,63 @@ function runLuckyDip() {
   background: #18181b;
   border: 1px solid #27272a;
   border-radius: 16px;
-  padding: 24px;
+  padding: 20px;
   width: 90%;
   max-width: 360px;
-  text-align: center;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.sort-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.sort-option-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #a1a1aa;
+}
+
+.modal-select {
+  background: #09090b;
+  border: 1px solid #27272a;
+  color: #fff;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.toggle-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toggle-btn {
+  background: #09090b;
+  border: 1px solid #27272a;
+  color: #a1a1aa;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.toggle-btn.active {
+  background: #27272a;
+  color: #60a5fa;
+  border-color: #3b82f6;
 }
 
 .btn-close {
@@ -720,38 +776,5 @@ function runLuckyDip() {
   color: #a1a1aa;
   font-size: 1.2rem;
   cursor: pointer;
-}
-
-.sort-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8rem;
-  color: #a1a1aa;
-}
-
-.sort-label {
-  white-space: nowrap;
-}
-
-.sort-select {
-  background: #18181b;
-  border: 1px solid #27272a;
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 0.8rem;
-}
-
-.btn-sort-dir {
-  background: #18181b;
-  border: 1px solid #27272a;
-  color: #60a5fa;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
 }
 </style>
