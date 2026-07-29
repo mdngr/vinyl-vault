@@ -292,54 +292,65 @@ async function searchDiscogs(query) {
     });
 }
 
-// B. Livres & BDs (Google Books + Open Library Fallback)
+// B. Livres & BDs (100 % Open Library / Internet Archive - Open Source)
 async function searchBooks(query) {
     const isIsbn = /^\d+$/.test(query);
     const results = [];
 
     try {
-        const googleQuery = isIsbn ? `isbn:${query}` : encodeURIComponent(query);
-        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${googleQuery}&maxResults=8`);
-        const data = await res.json();
-
-        if (data.items && data.items.length > 0) {
-            data.items.forEach(item => {
-                const info = item.volumeInfo;
-                let coverUrl = info.imageLinks ? (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail) : '';
-                if (coverUrl) coverUrl = coverUrl.replace('http:', 'https:');
-
-                results.push({
-                    title: info.title || 'Titre inconnu',
-                    artist: info.authors ? info.authors.join(', ') : 'Auteur inconnu',
-                    year: info.publishedDate ? info.publishedDate.substring(0, 4) : '',
-                    genre: info.categories ? info.categories[0] : 'Livre / BD',
-                    cover: coverUrl
-                });
-            });
-            return results;
-        }
-    } catch (err) {
-        console.warn("Google Books error:", err);
-    }
-
-    try {
         if (isIsbn) {
-            const coverUrl = `https://covers.openlibrary.org/b/isbn/${query}-L.jpg`;
+            // A. Recherche directe par code-barres / ISBN
             const res = await fetch(`https://openlibrary.org/isbn/${query}.json`);
             if (res.ok) {
                 const b = await res.json();
+                
+                // Récupération du nom de l'auteur si disponible sous forme de clé
+                let authorName = 'Auteur inconnu';
+                if (b.authors && b.authors.length > 0) {
+                    try {
+                        const authorRes = await fetch(`https://openlibrary.org${b.authors[0].key}.json`);
+                        if (authorRes.ok) {
+                            const authorData = await authorRes.json();
+                            authorName = authorData.name || authorName;
+                        }
+                    } catch (e) {
+                        console.warn("Impossible de récupérer le nom de l'auteur", e);
+                    }
+                }
+
                 results.push({
                     title: b.title || 'Livre',
-                    artist: 'Auteur inconnu',
+                    artist: authorName,
                     year: b.publish_date ? b.publish_date.substring(0, 4) : '',
                     genre: 'Livre / BD',
-                    cover: coverUrl
+                    cover: `https://covers.openlibrary.org/b/isbn/${query}-L.jpg`
                 });
                 return results;
             }
         }
+
+        // B. Recherche par texte (Titre, Auteur, BD...)
+        const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=8`);
+        const data = await res.json();
+
+        if (data.docs && data.docs.length > 0) {
+            data.docs.forEach(doc => {
+                // Construction de l'URL de couverture haute résolution depuis leur CDN libre
+                const coverUrl = doc.cover_i 
+                    ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` 
+                    : '';
+
+                results.push({
+                    title: doc.title || 'Titre inconnu',
+                    artist: doc.author_name ? doc.author_name.join(', ') : 'Auteur inconnu',
+                    year: doc.first_publish_year ? String(doc.first_publish_year) : '',
+                    genre: doc.subject ? doc.subject[0] : 'Livre / BD',
+                    cover: coverUrl
+                });
+            });
+        }
     } catch (err) {
-        console.error("OpenLibrary error:", err);
+        console.error("Erreur Open Library :", err);
     }
 
     return results;
