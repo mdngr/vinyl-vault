@@ -1,156 +1,165 @@
 <template>
-  <div class="landing-container">
-    <!-- Navbar simplifiée pour la Landing Page -->
+  <div class="landing-shell">
+    <!-- Overlay d'ambiance avec dégradés luminescents -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <!-- Header avec Bouton de Connexion rapide -->
     <header class="landing-header">
       <div class="logo">
         <span class="logo-icon">🏛️</span>
         <span class="logo-text">Culture Vault</span>
       </div>
-      <div class="header-actions">
-        <button class="btn btn-secondary" @click="openAuthModal(false)">Connexion</button>
-        <button class="btn btn-primary" @click="openAuthModal(true)">Créer un compte</button>
-      </div>
+
+      <button class="btn-header-login" @click="scrollToAuth">
+        Se connecter
+      </button>
     </header>
 
-    <!-- Hero Section -->
-    <main class="hero-section">
-      <span class="hero-badge">✨ Ta médiathèque personnelle PWA</span>
-      <h1>Catalogue toute ta culture au même endroit.</h1>
-      <p class="hero-subtitle">
-        Vinyles, livres, BDs, films… Scanne tes codes-barres en vide-grenier, retrouve les cotes d'occasion en temps réel et ne réachète plus jamais un doublon.
-      </p>
+    <main class="landing-content">
+      <!-- Section Hero -->
+      <section class="hero-section">
+        <div class="badge-pill">✨ Votre médiathèque personnelle</div>
+        <h1 class="hero-title">
+          Toute votre culture,<br />
+          <span class="text-gradient">au même endroit.</span>
+        </h1>
+        <p class="hero-subtitle">
+          Organisez, filtrez et explorez vos vinyles, livres et films préférés en quelques clics.
+        </p>
 
-      <div class="hero-actions">
-        <button class="btn btn-primary btn-lg" @click="openAuthModal(true)">
-          🚀 Démarrer gratuitement
-        </button>
-        <button class="btn btn-secondary btn-lg" @click="openAuthModal(false)">
-          🔑 Déjà inscrit ? Connexion
-        </button>
-      </div>
+        <!-- Grille de fonctionnalités en cartes -->
+        <div class="features-grid">
+          <div class="feature-card">
+            <span class="feature-icon">💿</span>
+            <h3>Musique</h3>
+            <p>Collectionnez vos vinyles & albums.</p>
+          </div>
+          <div class="feature-card">
+            <span class="feature-icon">📚</span>
+            <h3>Livres & BDs</h3>
+            <p>Gardez une trace de vos lectures.</p>
+          </div>
+          <div class="feature-card">
+            <span class="feature-icon">🎬</span>
+            <h3>Cinéma</h3>
+            <p>Répertoriez vos films & séries.</p>
+          </div>
+          <div class="feature-card">
+            <span class="feature-icon">🎲</span>
+            <h3>Tirage au sort</h3>
+            <p>Laissez le hasard choisir pour vous.</p>
+          </div>
+        </div>
+      </section>
 
-      <!-- Feature Grid -->
-      <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon">📷</div>
-          <h3>Scanner Intelligent</h3>
-          <p>Détection instantanée des codes-barres avec contrôle du zoom matériel pour les vide-greniers.</p>
+      <!-- Section Formulaire Connexion / Inscription -->
+      <section id="auth-form-section" ref="authSectionRef" class="auth-section">
+        <div class="auth-card">
+          <div class="auth-tabs">
+            <button 
+              class="auth-tab-btn" 
+              :class="{ active: isLogin }" 
+              @click="isLogin = true"
+            >
+              Connexion
+            </button>
+            <button 
+              class="auth-tab-btn" 
+              :class="{ active: !isLogin }" 
+              @click="isLogin = false"
+            >
+              Créer un compte
+            </button>
+          </div>
+
+          <form @submit.prevent="handleAuth" class="auth-form">
+            <div class="form-group">
+              <label for="email">Adresse e-mail</label>
+              <input 
+                id="email" 
+                v-model="email" 
+                type="email" 
+                placeholder="nom@exemple.com" 
+                required 
+                autocomplete="email"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="password">Mot de passe</label>
+              <input 
+                id="password" 
+                v-model="password" 
+                type="password" 
+                placeholder="••••••••" 
+                required 
+                autocomplete="current-password"
+              />
+            </div>
+
+            <div v-if="errorMsg" class="error-badge">
+              ⚠️ {{ errorMsg }}
+            </div>
+
+            <div v-if="successMsg" class="success-badge">
+              ✅ {{ successMsg }}
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-submit" :disabled="loading">
+              <span v-if="loading">Chargement...</span>
+              <span v-else>{{ isLogin ? 'Se connecter' : 'Rejoindre Culture Vault' }}</span>
+            </button>
+          </form>
         </div>
-        <div class="feature-card">
-          <div class="feature-icon">🏷️</div>
-          <h3>Cotes en Temps Réel</h3>
-          <p>Estimations des prix d'occasion basées sur Discogs, Open Library et TMDB.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">✨</div>
-          <h3>Wishlist "Anti-Doublons"</h3>
-          <p>Conserve une liste d'achats ciblés pour ne plus jamais acheter un album ou livre déjà possédé.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">📶</div>
-          <h3>100% Hors-Ligne</h3>
-          <p>Accède à l'intégralité de ton catalogue même sans réseau au fond d'une brocante.</p>
-        </div>
-      </div>
+      </section>
     </main>
 
-    <!-- Modal Authentification -->
-    <div v-if="showAuthModal" class="modal-overlay" @click.self="showAuthModal = false">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>{{ isSignUpMode ? '📝 Créer un compte' : '🔓 Connexion à mon compte' }}</h3>
-          <button class="btn-close" @click="showAuthModal = false">✕</button>
-        </div>
-
-        <form @submit.prevent="handleAuth" class="auth-form">
-          <div class="form-group">
-            <label for="email">Email</label>
-            <input 
-              id="email" 
-              v-model="email" 
-              type="email" 
-              required 
-              placeholder="ton-email@exemple.com" 
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="password">Mot de passe</label>
-            <input 
-              id="password" 
-              v-model="password" 
-              type="password" 
-              required 
-              placeholder="••••••••" 
-            />
-          </div>
-
-          <div v-if="errorMessage" class="error-message">
-            {{ errorMessage }}
-          </div>
-
-          <button type="submit" class="btn btn-primary btn-full" :disabled="loading">
-            {{ loading ? 'Chargement...' : (isSignUpMode ? 'S\'inscrire' : 'Se connecter') }}
-          </button>
-        </form>
-
-        <div class="toggle-mode">
-          <a href="#" @click.prevent="isSignUpMode = !isSignUpMode">
-            {{ isSignUpMode ? 'Déjà un compte ? Se connecter' : 'Pas encore de compte ? S\'inscrire' }}
-          </a>
-        </div>
-      </div>
-    </div>
+    <footer class="landing-footer">
+      <p>Culture Vault &copy; {{ new Date().getFullYear() }} — Tous droits réservés.</p>
+    </footer>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { supabase } from '../services/supabase';
+import { useAuthStore } from '../stores/auth';
 
 const router = useRouter();
+const authStore = useAuthStore();
 
-// État local du modal et formulaire
-const showAuthModal = ref(false);
-const isSignUpMode = ref(false);
+const authSectionRef = ref(null);
+const isLogin = ref(true);
 const email = ref('');
 const password = ref('');
 const loading = ref(false);
-const errorMessage = ref('');
+const errorMsg = ref('');
+const successMsg = ref('');
 
-function openAuthModal(isSignUp) {
-  isSignUpMode.value = isSignUp;
-  errorMessage.value = '';
-  showAuthModal.value = true;
+function scrollToAuth() {
+  isLogin.value = true;
+  if (authSectionRef.value) {
+    authSectionRef.value.scrollIntoView({ behavior: 'smooth' });
+  }
 }
 
 async function handleAuth() {
   loading.value = true;
-  errorMessage.value = '';
+  errorMsg.value = '';
+  successMsg.value = '';
 
   try {
-    if (isSignUpMode.value) {
-      const { data, error } = await supabase.auth.signUp({
-        email: email.value.trim(),
-        password: password.value
-      });
-      if (error) throw error;
-      alert("Compte créé avec succès ! Tu peux maintenant te connecter.");
+    if (isLogin.value) {
+      await authStore.signIn(email.value, password.value);
+      router.push('/collection');
     } else {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.value.trim(),
-        password: password.value
-      });
-      if (error) throw error;
-      
-      // On masque la modale et on redirige
-      showAuthModal.value = false;
-      await router.push('/collection');
+      await authStore.signUp(email.value, password.value);
+      successMsg.value = 'Compte créé ! Vérifiez votre boîte mail si la confirmation est requise.';
+      isLogin.value = true;
     }
   } catch (err) {
-    console.error("Erreur Auth Supabase :", err);
-    errorMessage.value = err.message || "Impossible de se connecter.";
+    errorMsg.value = err.message || "Une erreur est survenue lors de l'authentification.";
   } finally {
     loading.value = false;
   }
@@ -158,225 +167,329 @@ async function handleAuth() {
 </script>
 
 <style scoped>
-.landing-container {
+/* Conteneur Global */
+.landing-shell {
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100vw;
+  max-width: 100vw;
   background-color: #121212;
-  color: #f3f4f6;
-  padding: 0 20px 60px 20px;
+  color: #ffffff;
+  position: relative;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
+/* Halos lumineux d'arrière-plan */
+.bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-glow-1 {
+  width: 350px;
+  height: 350px;
+  background: #3b82f6;
+  top: -100px;
+  left: -100px;
+}
+
+.bg-glow-2 {
+  width: 400px;
+  height: 400px;
+  background: #8b5cf6;
+  bottom: -150px;
+  right: -100px;
+}
+
+/* Header */
 .landing-header {
-  max-width: 1100px;
-  margin: 0 auto;
+  height: auto;
+  min-height: 60px;
+  padding-top: calc(env(safe-area-inset-top) + 12px);
+  padding-bottom: 12px;
+  padding-left: clamp(16px, 5vw, 40px);
+  padding-right: clamp(16px, 5vw, 40px);
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 24px 0;
+  justify-content: space-between;
+  position: relative;
+  z-index: 10;
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-weight: 800;
+  font-size: clamp(1.1rem, 2vw, 1.4rem);
 }
 
-.header-actions {
-  display: flex;
-  gap: 12px;
+.logo-icon {
+  font-size: 1.4em;
 }
 
-.hero-section {
-  max-width: 900px;
-  margin: 60px auto 0 auto;
-  text-align: center;
-}
-
-.hero-badge {
-  background: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  padding: 6px 16px;
+/* Bouton Login Header */
+.btn-header-login {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  padding: 8px 16px;
   border-radius: 20px;
   font-size: 0.85rem;
   font-weight: 600;
-  display: inline-block;
-  margin-bottom: 24px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
 }
 
-.hero-section h1 {
-  font-size: 2.75rem;
+.btn-header-login:hover {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+/* Contenu Principal */
+.landing-content {
+  flex: 1;
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: clamp(16px, 4vw, 40px);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(32px, 5vw, 64px);
+  align-items: center;
+}
+
+/* Desktop Layout : 2 colonnes */
+@media (min-width: 900px) {
+  .landing-content {
+    grid-template-columns: 1.2fr 0.8fr;
+  }
+}
+
+/* Hero Section */
+.hero-section {
+  text-align: left;
+}
+
+.badge-pill {
+  display: inline-block;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.hero-title {
+  font-size: clamp(2rem, 5vw, 3.2rem);
   font-weight: 800;
-  line-height: 1.2;
-  margin-bottom: 20px;
-  background: linear-gradient(135deg, #ffffff 0%, #a1a1aa 100%);
+  line-height: 1.15;
+  margin-bottom: 16px;
+  letter-spacing: -0.02em;
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .hero-subtitle {
-  font-size: 1.15rem;
+  font-size: clamp(0.95rem, 2vw, 1.15rem);
   color: #a1a1aa;
-  max-width: 680px;
-  margin: 0 auto 36px auto;
-  line-height: 1.6;
+  line-height: 1.5;
+  margin-bottom: 28px;
+  max-width: 540px;
 }
 
-.hero-actions {
-  display: flex;
-  gap: 16px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: 70px;
-}
-
-.btn {
-  padding: 10px 18px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.95rem;
-  cursor: pointer;
-  border: none;
-  transition: all 0.2s ease;
-}
-
-.btn-primary {
-  background: #3b82f6;
-  color: #ffffff;
-}
-
-.btn-primary:hover {
-  background: #2563eb;
-}
-
-.btn-secondary {
-  background: #27272a;
-  color: #f3f4f6;
-  border: 1px solid #3f3f46;
-}
-
-.btn-secondary:hover {
-  background: #3f3f46;
-}
-
-.btn-lg {
-  padding: 14px 28px;
-  font-size: 1.05rem;
-}
-
-.btn-full {
-  width: 100%;
-  margin-top: 10px;
-}
-
+/* Grille de Fonctionnalités */
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
-  margin-top: 20px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .features-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .feature-card {
-  background: #18181b;
+  background: rgba(24, 24, 27, 0.6);
+  backdrop-filter: blur(12px);
   border: 1px solid #27272a;
-  padding: 24px;
   border-radius: 12px;
-  text-align: left;
+  padding: 14px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.feature-card:hover {
+  border-color: #3f3f46;
+  transform: translateY(-2px);
 }
 
 .feature-icon {
-  font-size: 2rem;
-  margin-bottom: 12px;
+  font-size: 1.4rem;
+  display: block;
+  margin-bottom: 6px;
 }
 
 .feature-card h3 {
-  font-size: 1.1rem;
-  margin-bottom: 8px;
-  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
 }
 
 .feature-card p {
-  font-size: 0.9rem;
-  color: #a1a1aa;
-  line-height: 1.5;
+  font-size: 0.72rem;
+  color: #71717a;
+  margin: 0;
+  line-height: 1.3;
 }
 
-/* Modal styles */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.75);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
+/* Section Auth / Carte Formulaire */
+.auth-section {
+  width: 100%;
 }
 
-.modal-content {
+.auth-card {
   background: #18181b;
   border: 1px solid #27272a;
-  border-radius: 16px;
-  padding: 28px;
-  width: 90%;
-  max-width: 400px;
+  border-radius: 20px;
+  padding: clamp(20px, 4vw, 32px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
 }
 
-.modal-header {
+.auth-tabs {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  background: #09090b;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid #27272a;
+  margin-bottom: 24px;
 }
 
-.btn-close {
-  background: none;
+.auth-tab-btn {
+  flex: 1;
+  background: transparent;
   border: none;
   color: #a1a1aa;
-  font-size: 1.2rem;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.form-group {
-  margin-bottom: 16px;
+.auth-tab-btn.active {
+  background: #27272a;
+  color: #ffffff;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   text-align: left;
 }
 
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .form-group label {
-  display: block;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
   color: #a1a1aa;
-  margin-bottom: 6px;
 }
 
 .form-group input {
   width: 100%;
-  padding: 10px 14px;
+  padding: 12px 14px;
   background: #09090b;
   border: 1px solid #27272a;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #ffffff;
   font-size: 0.95rem;
-  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s ease;
 }
 
-.error-message {
-  color: #ef4444;
-  font-size: 0.85rem;
-  margin-bottom: 12px;
+.form-group input:focus {
+  border-color: #3b82f6;
 }
 
-.toggle-mode {
-  margin-top: 16px;
+.btn-submit {
+  width: 100%;
+  padding: 14px;
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background-color 0.2s ease;
+  min-height: 48px;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-badge, .success-badge {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.error-badge {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.success-badge {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+}
+
+/* Footer */
+.landing-footer {
+  padding: 20px;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
   text-align: center;
-  font-size: 0.85rem;
-}
-
-.toggle-mode a {
-  color: #60a5fa;
-  text-decoration: none;
+  font-size: 0.75rem;
+  color: #52525b;
+  position: relative;
+  z-index: 10;
 }
 </style>
