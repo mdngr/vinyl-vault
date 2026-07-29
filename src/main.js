@@ -544,45 +544,55 @@ async function stopScanner() {
 // ==========================================
 
 function renderItems(filterText = '') {
-    grid.innerHTML = '';
+    const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
+    const typeIcons = { vinyl: '💿 Vinyle', book: '📚 Livre / BD', movie: '🎬 DVD' };
+    const query = filterText.toLowerCase().trim();
 
-    const filtered = items.filter(i => {
-        const matchesType = activeTypeFilter === 'all' || i.type === activeTypeFilter;
-        const matchesText = i.title.toLowerCase().includes(filterText.toLowerCase()) ||
-                            i.artist.toLowerCase().includes(filterText.toLowerCase());
-        return matchesType && matchesText;
-    });
+    // 1. Récupérer tous les éléments de carte déjà présents dans le DOM
+    const existingCards = Array.from(grid.children);
+    
+    // Si la liste a changé (ajout/suppression), on reconstruit
+    if (existingCards.length !== items.length) {
+        grid.innerHTML = '';
+        items.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'vinyl-card';
+            card.dataset.id = item.id;
+            card.dataset.type = item.type;
+            card.dataset.search = `${item.title} ${item.artist}`.toLowerCase();
 
-    if (filtered.length === 0) {
-        grid.innerHTML = '<p style="color:var(--text-secondary); grid-column:1/-1;">Aucun élément trouvé dans cette catégorie.</p>';
-        return;
+            const actionsHTML = currentUser ? `
+                <div class="card-actions">
+                    <button class="btn-card-action btn-edit-card" onclick="openEditModal(${item.id})" title="Modifier">✏️</button>
+                    <button class="btn-card-action btn-delete-card" onclick="deleteItem(${item.id})" title="Supprimer">✕</button>
+                </div>
+            ` : '';
+
+            card.innerHTML = `
+                ${actionsHTML}
+                <img class="cover-img" src="${item.cover || defaultCover}" alt="${item.title}" loading="lazy" onerror="this.src='${defaultCover}'">
+                <div class="card-body">
+                    <span class="type-tag">${typeIcons[item.type] || 'Œuvre'}</span>
+                    <div class="album-title">${item.title}</div>
+                    <div class="artist-name">${item.artist} ${item.year ? `(${item.year})` : ''}</div>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
     }
 
-    filtered.forEach(item => {
-        const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
-        const card = document.createElement('div');
-        card.className = 'vinyl-card';
+    // 2. Filtrer en modifiant simplement la propriété display (pas de rechargement d'image !)
+    let visibleCount = 0;
+    Array.from(grid.children).forEach(card => {
+        const matchesType = activeTypeFilter === 'all' || card.dataset.type === activeTypeFilter;
+        const matchesText = !query || card.dataset.search.includes(query);
 
-        // Boutons Édition & Suppression réservés à l'admin connecté
-        const actionsHTML = currentUser ? `
-            <div class="card-actions">
-                <button class="btn-card-action btn-edit-card" onclick="openEditModal(${item.id})" title="Modifier">✏️</button>
-                <button class="btn-card-action btn-delete-card" onclick="deleteItem(${item.id})" title="Supprimer">✕</button>
-            </div>
-        ` : '';
-
-        const typeIcons = { vinyl: '💿 Vinyle', book: '📚 Livre / BD', movie: '🎬 DVD' };
-
-        card.innerHTML = `
-            ${actionsHTML}
-            <img class="cover-img" src="${item.cover || defaultCover}" alt="${item.title}" onerror="this.src='${defaultCover}'">
-            <div class="card-body">
-                <span class="type-tag">${typeIcons[item.type] || 'Œuvre'}</span>
-                <div class="album-title">${item.title}</div>
-                <div class="artist-name">${item.artist} ${item.year ? `(${item.year})` : ''}</div>
-            </div>
-        `;
-        grid.appendChild(card);
+        if (matchesType && matchesText) {
+            card.style.display = '';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
     });
 }
 
@@ -609,3 +619,11 @@ searchInput.addEventListener('input', (e) => renderItems(e.target.value));
 // Initialisation au chargement
 checkUserSession();
 fetchItems();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((reg) => console.log('🏛️ Service Worker actif (Mode hors-ligne prêt) !', reg.scope))
+      .catch((err) => console.warn('Échec enregistrement SW :', err));
+  });
+}
