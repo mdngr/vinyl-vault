@@ -22,13 +22,16 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Mettre en cache tous les assets JS, CSS et HTML générés par Vite
+        // Supprime automatiquement les caches périmés lors des mises à jour du SW
+        cleanupOutdatedCaches: true,
+        
+        // Mettre en cache uniquement le code HTML, CSS, JS et icônes
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         
-        // Stratégies de cache personnalisées pour Supabase et les images externes
+        // Cache pour les images externes uniquement (Jaquettes)
         runtimeCaching: [
           {
-            // 1. Cache pour les jaquettes et images (Discogs, OpenLibrary, TMDB)
+            // Cache pour les couvertures (Discogs, OpenLibrary, TMDB)
             urlPattern: /^https:\/\/.*(covers\.openlibrary\.org|discogs|tmdb|placeholder).*$/i,
             handler: 'CacheFirst',
             options: {
@@ -41,22 +44,8 @@ export default defineConfig({
                 statuses: [0, 200]
               }
             }
-          },
-          {
-            // 2. Cache pour la base de données Supabase (Network First avec Fallback Cache)
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*$/,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-data-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 jours
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
           }
+          // ⚠️ LA RÈGLE SUPABASE A ÉTÉ SUPPRIMÉE ICI POUR ÉVITER LES FUITES DE DONNÉES D'UN COMPTE À L'AUTRE
         ]
       }
     })

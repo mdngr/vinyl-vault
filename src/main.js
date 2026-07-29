@@ -108,7 +108,7 @@ async function checkUserSession() {
 function updateUIForAuth(user) {
     currentUser = user;
     
-    // VIDAGE IMPÉRATIF POUR ÉVITER LES FUITES DE CACHE ENTRE COMPTES
+    // 1. Vidage immédiat de la mémoire de l'application
     items = [];
     grid.innerHTML = '';
     
@@ -127,6 +127,7 @@ function updateUIForAuth(user) {
             userBadge.style.display = 'inline-flex';
         }
 
+        // Charger les données de l'utilisateur actif
         fetchItems();
     } else {
         if (authIcon) authIcon.textContent = '🔒';
@@ -138,13 +139,22 @@ function updateUIForAuth(user) {
             userBadge.style.display = 'none';
         }
 
+        // 2. Si déconnecté : Suppression de tout cache résiduel non-spécifique
+        localStorage.removeItem('culture_vault_cache');
+        
+        renderItems();
         updateStats();
     }
 }
 
-btnAuth.addEventListener('click', () => {
+btnAuth.addEventListener('click', async () => {
     if (currentUser) {
-        supabase.auth.signOut();
+        // Vider la mémoire avant d'initier la déconnexion
+        items = [];
+        grid.innerHTML = '';
+        await supabase.auth.signOut();
+        // Recharge proprement la page pour réinitialiser totalement l'état JavaScript de l'app
+        window.location.reload();
     } else {
         loginModal.style.display = 'flex';
     }
