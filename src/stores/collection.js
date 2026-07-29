@@ -60,27 +60,28 @@ export const useCollectionStore = defineStore('collection', {
         return '0 élément';
       }
 
-      // Helper pour accorder automatiquement au singulier/pluriel
       const pluralize = (nb, singular, plural = singular + 's') => {
         return `${nb} ${nb > 1 ? plural : singular}`;
       };
 
       const status = state.showWishlistOnly ? 'en wishlist' : 'en collection';
 
-      // Si un type spécifique est filtré (Vinyle, Livre, Film)
+      // Catégorie Musique (CDs, Vinyles, Cassettes...)
       if (state.activeTypeFilter === 'vinyl') {
-        return `${pluralize(count, 'vinyle')} ${status}`;
+        return `${pluralize(count, 'œuvre musicale', 'œuvres musicales')} ${status}`;
       }
 
+      // Catégorie Livres (Romans, BDs, Mangas...)
       if (state.activeTypeFilter === 'book') {
         return `${pluralize(count, 'livre')} ${status}`;
       }
 
+      // Catégorie Films (DVDs, Blu-ray...)
       if (state.activeTypeFilter === 'movie') {
         return `${pluralize(count, 'film')} ${status}`;
       }
 
-      // Si l'onglet "Tout" est sélectionné
+      // Tout
       return `${pluralize(count, 'œuvre')} ${status}`;
     }
   },
@@ -125,6 +126,7 @@ export const useCollectionStore = defineStore('collection', {
               genre: i.genre,
               cover: i.cover,
               type: i.type || 'vinyl',
+              format: i.format,
               is_wishlist: !!i.is_wishlist
             }));
 
@@ -138,27 +140,88 @@ export const useCollectionStore = defineStore('collection', {
       }
     },
 
-    async addItem(item) {
-      const authStore = useAuthStore();
-      if (!authStore.user) return;
+    // 1. Ajouter une œuvre (avec le format)
+    // Dans src/stores/collection.js -> actions
 
-      const itemToInsert = {
-        id: item.id || Date.now(),
-        title: item.title,
-        artist: item.artist,
-        year: item.year,
-        genre: item.genre,
-        cover: item.cover,
-        type: item.type,
-        is_wishlist: item.is_wishlist || false,
-        user_id: authStore.user.id
-      };
+    async addItem(newItem) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) throw new Error("Utilisateur non connecté");
 
-      const { error } = await supabase.from('vinyls').insert([itemToInsert]);
-      if (error) throw error;
+        // 🔍 1. Contrôle des doublons en mémoire
+        const cleanTitle = newItem.title.trim().toLowerCase();
+        const cleanArtist = newItem.artist.trim().toLowerCase();
 
-      this.items.unshift(itemToInsert);
-      localStorage.setItem(`culture_vault_cache_${authStore.user.id}`, JSON.stringify(this.items));
+        const isDuplicate = this.items.some(item => {
+          const sameTitle = item.title.trim().toLowerCase() === cleanTitle;
+          const sameArtist = item.artist.trim().toLowerCase() === cleanArtist;
+          const sameType = item.type === newItem.type;
+          return sameTitle && sameArtist && sameType;
+        });
+
+        if (isDuplicate) {
+          const confirmAdd = confirm(
+            `"${newItem.title}" de ${newItem.artist} existe déjà dans ta médiathèque.\nVeux-tu quand même l'ajouter ?`
+          );
+          if (!confirmAdd) return false; // Annulation par l'utilisateur
+        }
+
+        // 📤 2. Insertion dans Supabase
+        const payload = {
+          user_id: session.user.id,
+          title: newItem.title,
+          artist: newItem.artist,
+          year: newItem.year || null,
+          type: newItem.type || 'vinyl',
+          format: newItem.format || null,
+          cover: newItem.cover || null,
+          is_wishlist: !!newItem.is_wishlist
+        };
+
+        const { data, error } = await supabase
+          .from('vinyls')
+          .insert([payload])
+          .select();
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          this.items.unshift(data[0]);
+        }
+        return true; // Ajout réussi
+      } catch (err) {
+        console.error("Erreur lors de l'ajout :", err.message);
+        throw err;
+      }
+    },
+
+    // 2. Mettre à jour une œuvre (Édition de carte)
+    async updateItem(id, updatedFields) {
+      try {
+        const { data, error } = await supabase
+          .from('vinyls')
+          .update({
+            title: updatedFields.title,
+            artist: updatedFields.artist,
+            year: updatedFields.year,
+            type: updatedFields.type,
+            format: updatedFields.format || null, // 👈 S'assurer que le format est sauvegardé
+            cover: updatedFields.cover,
+            is_wishlist: updatedFields.is_wishlist
+          })
+          .eq('id', id)
+          .select();
+
+        if (error) throw error;
+
+        // Mettre à jour le state local Pinia
+        const index = this.items.findIndex(item => item.id === id);
+        if (index !== -1 && data && data.length > 0) {
+          this.items[index] = data[0];
+        }
+      } catch (err) {
+        console.error("Erreur mise à jour :", err.message);
+      }
     },
 
     async deleteItem(id) {

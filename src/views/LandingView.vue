@@ -17,7 +17,7 @@
     </header>
 
     <main class="landing-content">
-      <!-- Section Hero -->
+      <!-- Section Hero & Preview App -->
       <section class="hero-section">
         <div class="badge-pill">✨ Votre médiathèque personnelle</div>
         <h1 class="hero-title">
@@ -28,27 +28,54 @@
           Organisez, filtrez et explorez vos vinyles, livres et films préférés en quelques clics.
         </p>
 
-        <!-- Grille de fonctionnalités en cartes -->
-        <div class="features-grid">
-          <div class="feature-card">
-            <span class="feature-icon">💿</span>
-            <h3>Musique</h3>
-            <p>Collectionnez vos vinyles & albums.</p>
+        <!-- Preview Interactive / Maquette de l'App -->
+        <div class="app-preview-card">
+          <div class="preview-header">
+            <div class="preview-dots">
+              <span class="dot dot-red"></span>
+              <span class="dot dot-yellow"></span>
+              <span class="dot dot-green"></span>
+            </div>
+            <div class="preview-title-bar">Aperçu — Ma Collection</div>
           </div>
-          <div class="feature-card">
-            <span class="feature-icon">📚</span>
-            <h3>Livres & BDs</h3>
-            <p>Gardez une trace de vos lectures.</p>
-          </div>
-          <div class="feature-card">
-            <span class="feature-icon">🎬</span>
-            <h3>Cinéma</h3>
-            <p>Répertoriez vos films & séries.</p>
-          </div>
-          <div class="feature-card">
-            <span class="feature-icon">🎲</span>
-            <h3>Tirage au sort</h3>
-            <p>Laissez le hasard choisir pour vous.</p>
+
+          <div class="preview-body">
+            <!-- Fausse barre de recherche & filtres -->
+            <div class="preview-toolbar">
+              <div class="fake-search">🔍 Abbey Road...</div>
+              <div class="fake-chips">
+                <span class="fake-chip active">✨ Wishlist</span>
+                <span class="fake-chip">💿 Vinyles</span>
+                <span class="fake-chip">📚 Livres</span>
+              </div>
+            </div>
+
+            <!-- Fausse grille d'œuvres -->
+            <div class="preview-grid">
+              <div class="preview-item">
+                <div class="preview-cover cover-1">💿</div>
+                <div class="preview-info">
+                  <span class="preview-item-title">Abbey Road</span>
+                  <span class="preview-item-sub">The Beatles</span>
+                </div>
+              </div>
+
+              <div class="preview-item">
+                <div class="preview-cover cover-2">📚</div>
+                <div class="preview-info">
+                  <span class="preview-item-title">Dune</span>
+                  <span class="preview-item-sub">Frank Herbert</span>
+                </div>
+              </div>
+
+              <div class="preview-item">
+                <div class="preview-cover cover-3">🎬</div>
+                <div class="preview-info">
+                  <span class="preview-item-title">Interstellar</span>
+                  <span class="preview-item-sub">Christopher Nolan</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -234,7 +261,6 @@ async function handleAuth() {
   font-size: 1.4em;
 }
 
-/* Bouton Login Header */
 .btn-header-login {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -268,10 +294,9 @@ async function handleAuth() {
   align-items: center;
 }
 
-/* Desktop Layout : 2 colonnes */
 @media (min-width: 900px) {
   .landing-content {
-    grid-template-columns: 1.2fr 0.8fr;
+    grid-template-columns: 1.1fr 0.9fr;
   }
 }
 
@@ -310,55 +335,150 @@ async function handleAuth() {
   font-size: clamp(0.95rem, 2vw, 1.15rem);
   color: #a1a1aa;
   line-height: 1.5;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
   max-width: 540px;
 }
 
-/* Grille de Fonctionnalités */
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+/* PREVIEW MAQUETTE APP */
+.app-preview-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  max-width: 500px;
+}
+
+.preview-header {
+  background: #09090b;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #27272a;
+  position: relative;
+}
+
+.preview-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot-red { background: #ef4444; }
+.dot-yellow { background: #f59e0b; }
+.dot-green { background: #10b981; }
+
+.preview-title-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #a1a1aa;
+  pointer-events: none;
+}
+
+.preview-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
-@media (min-width: 600px) and (max-width: 899px) {
-  .features-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
+.preview-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.feature-card {
-  background: rgba(24, 24, 27, 0.6);
-  backdrop-filter: blur(12px);
+.fake-search {
+  background: #09090b;
   border: 1px solid #27272a;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: #71717a;
+  text-align: left;
+}
+
+.fake-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.fake-chip {
+  background: #09090b;
+  border: 1px solid #27272a;
+  color: #a1a1aa;
+  padding: 4px 8px;
   border-radius: 12px;
-  padding: 14px;
-  transition: transform 0.2s ease, border-color 0.2s ease;
+  font-size: 0.7rem;
 }
 
-.feature-card:hover {
-  border-color: #3f3f46;
-  transform: translateY(-2px);
+.fake-chip.active {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border-color: #f59e0b;
 }
 
-.feature-icon {
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.preview-item {
+  background: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.preview-cover {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 1.4rem;
-  display: block;
   margin-bottom: 6px;
 }
 
-.feature-card h3 {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 2px;
+.cover-1 { background: #1e3a8a; }
+.cover-2 { background: #78350f; }
+.cover-3 { background: #312e81; }
+
+.preview-info {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
 }
 
-.feature-card p {
-  font-size: 0.72rem;
-  color: #71717a;
-  margin: 0;
-  line-height: 1.3;
+.preview-item-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-item-sub {
+  font-size: 0.6rem;
+  color: #a1a1aa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Section Auth / Carte Formulaire */

@@ -1,780 +1,461 @@
 <template>
-  <div class="app-shell">
-    <!-- En-tête fixe compact avec Safe Area iOS -->
-    <header class="app-header">
-      <div class="logo">
-        <span class="logo-icon">🏛️</span>
-        <span class="logo-text">Culture Vault</span>
+  <div class="collection-page">
+    
+    <!-- 📱 VUE MOBILE PLEIN ÉCRAN : RECHERCHE & AJOUT -->
+    <div v-if="isSearchOpen && isMobile" class="fullscreen-mobile-view">
+      <div class="mobile-view-header">
+        <button class="btn-back" @click="isSearchOpen = false">← Collection</button>
+        <h3>Ajouter une œuvre</h3>
       </div>
-      <div class="header-right">
-        <span class="view-title-badge">{{ activeTabTitle }}</span>
-      </div>
-    </header>
-
-    <!-- Zone de contenu défilante -->
-    <main class="app-content">
-      <!-- ===================================================================
-           ONGLET 1 : BIBLIOTHÈQUE / COLLECTION
-           =================================================================== -->
-      <section v-if="currentTab === 'library'" class="tab-page">
-        <!-- BARRE DE RECHERCHE & COMMANDES ÉPURÉES -->
-        <div class="toolbar">
-          <!-- Ligne 1 : Champ de recherche principal + Tirage au sort -->
-          <div class="search-row">
-            <div class="search-input-wrapper">
-              <span class="search-icon">🔍</span>
-              <input 
-                v-model="collectionStore.searchQuery" 
-                type="text" 
-                placeholder="Rechercher dans mes œuvres..."
-              />
-              <button 
-                v-if="collectionStore.searchQuery" 
-                class="btn-clear" 
-                @click="collectionStore.searchQuery = ''"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <button class="btn-icon btn-lucky" @click="runLuckyDip" title="Tirer au sort">
-              🎲
-            </button>
-          </div>
-
-          <!-- Ligne 2 : Filtres rapides (Wishlist, Catégories, Tri) -->
-          <div class="controls-row">
-            <!-- Toggle Wishlist -->
-            <button 
-              class="chip-btn chip-wishlist"
-              :class="{ active: collectionStore.showWishlistOnly }"
-              @click="collectionStore.showWishlistOnly = !collectionStore.showWishlistOnly"
-            >
-              ✨ Wishlist
-            </button>
-
-            <!-- Dropdown Catégories -->
-            <select v-model="collectionStore.activeTypeFilter" class="select-chip">
-              <option value="all">📂 Tout</option>
-              <option value="vinyl">💿 Vinyles</option>
-              <option value="book">📚 Livres</option>
-              <option value="movie">🎬 Films</option>
-            </select>
-
-            <!-- Bouton Options de Tri -->
-            <button class="chip-btn chip-sort" @click="showSortModal = true">
-              <span>{{ currentSortLabel }}</span>
-              <span class="sort-arrow">{{ collectionStore.sortOrder === 'asc' ? '⬆️' : '⬇️' }}</span>
-            </button>
-          </div>
-
-          <!-- Ligne 3 : Compteur d'éléments + Sélecteur de Vue (Grille / Liste) -->
-          <div class="stats-row">
-            <span class="stats-text">{{ collectionStore.stats }}</span>
-
-            <div class="view-toggle">
-              <button 
-                class="btn-toggle" 
-                :class="{ active: collectionStore.currentViewMode === 'grid' }"
-                @click="collectionStore.currentViewMode = 'grid'"
-                title="Vue Grille"
-              >
-                🔲
-              </button>
-              <button 
-                class="btn-toggle" 
-                :class="{ active: collectionStore.currentViewMode === 'list' }"
-                @click="collectionStore.currentViewMode = 'list'"
-                title="Vue Liste"
-              >
-                ☰
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Chargement / Contenu -->
-        <div v-if="collectionStore.loading" class="loading-state">
-          <p>Chargement de la collection...</p>
-        </div>
-
-        <!-- Empty State structuré -->
-        <EmptyState 
-          v-else-if="collectionStore.filteredItems.length === 0"
-          :showWishlistOnly="collectionStore.showWishlistOnly"
-          :searchQuery="collectionStore.searchQuery"
-          :activeTypeFilter="collectionStore.activeTypeFilter"
-          @action="currentTab = 'add'"
-        />
-
-        <!-- Liste / Grille des œuvres -->
-        <div 
-          v-else 
-          :class="collectionStore.currentViewMode === 'list' ? 'items-list' : 'items-grid'"
-        >
-          <ItemCard 
-            v-for="item in collectionStore.filteredItems" 
-            :key="item.id" 
-            :item="item" 
-            :isListView="collectionStore.currentViewMode === 'list'"
-            @delete="confirmDelete"
-          />
-        </div>
-      </section>
-
-      <!-- ===================================================================
-           ONGLET 2 : AJOUT & SCANNER
-           =================================================================== -->
-      <section v-if="currentTab === 'add'" class="tab-page">
-        <div class="add-section-header">
-          <h2>Ajouter une œuvre</h2>
-          <p class="subtitle">Scanne un code-barres ou cherche sur Discogs, OpenLibrary et TMDB.</p>
-        </div>
+      <div class="mobile-view-content">
         <ApiSearchPanel />
-      </section>
-
-      <!-- ===================================================================
-           ONGLET 3 : COMPTE & PROFIL
-           =================================================================== -->
-      <section v-if="currentTab === 'account'" class="tab-page">
-        <div class="profile-card">
-          <div class="avatar-circle">{{ userInitial }}</div>
-          <div class="user-email-label">Compte connecté</div>
-          <div class="user-email-val">{{ authStore.user?.email }}</div>
-
-          <div class="account-stats-grid">
-            <div class="stat-card">
-              <span class="stat-value">{{ countCollection }}</span>
-              <span class="stat-label">En collection</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-value">{{ countWishlist }}</span>
-              <span class="stat-label">En Wishlist</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-value">{{ countVinyls }}</span>
-              <span class="stat-label">Vinyles</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-value">{{ countBooks }}</span>
-              <span class="stat-label">Livres / BDs</span>
-            </div>
-          </div>
-
-          <div class="profile-actions">
-            <button class="btn btn-logout btn-full" @click="handleSignOut">
-              🚪 Se déconnecter
-            </button>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <!-- TAB BAR FIXE EN BAS -->
-    <nav class="bottom-tab-bar">
-      <button 
-        class="tab-item" 
-        :class="{ active: currentTab === 'library' }"
-        @click="currentTab = 'library'"
-      >
-        <span class="tab-icon">📚</span>
-        <span class="tab-label">Bibliothèque</span>
-      </button>
-
-      <button 
-        class="tab-item tab-item-add" 
-        :class="{ active: currentTab === 'add' }"
-        @click="currentTab = 'add'"
-      >
-        <div class="add-icon-bubble">➕</div>
-        <span class="tab-label">Ajouter</span>
-      </button>
-
-      <button 
-        class="tab-item" 
-        :class="{ active: currentTab === 'account' }"
-        @click="currentTab = 'account'"
-      >
-        <span class="tab-icon">👤</span>
-        <span class="tab-label">Compte</span>
-      </button>
-    </nav>
-
-    <!-- MODALE OPTION DE TRI -->
-    <div v-if="showSortModal" class="modal-overlay" @click.self="showSortModal = false">
-      <div class="modal-content sort-modal">
-        <div class="modal-header">
-          <h3>⚡ Trier les œuvres</h3>
-          <button class="btn-close" @click="showSortModal = false">✕</button>
-        </div>
-
-        <div class="sort-options-list">
-          <label class="sort-option-item">
-            <span>Critère de tri</span>
-            <select v-model="collectionStore.sortBy" class="modal-select">
-              <option value="title">🔤 Titre de l'œuvre</option>
-              <option value="artist">👤 Auteur / Artiste</option>
-              <option value="year">📅 Année de sortie</option>
-            </select>
-          </label>
-
-          <label class="sort-option-item">
-            <span>Ordre d'affichage</span>
-            <div class="toggle-group">
-              <button 
-                class="toggle-btn" 
-                :class="{ active: collectionStore.sortOrder === 'asc' }"
-                @click="collectionStore.sortOrder = 'asc'"
-              >
-                ⬆️ Ascendant (A-Z, Croissant)
-              </button>
-              <button 
-                class="toggle-btn" 
-                :class="{ active: collectionStore.sortOrder === 'desc' }"
-                @click="collectionStore.sortOrder = 'desc'"
-              >
-                ⬇️ Descendant (Z-A, Récent)
-              </button>
-            </div>
-          </label>
-        </div>
-
-        <button class="btn btn-primary btn-full modal-confirm" @click="showSortModal = false">
-          Appliquer
-        </button>
       </div>
     </div>
 
-    <!-- MODALE LUCKY DIP -->
-    <div v-if="showLuckyModal" class="modal-overlay" @click.self="showLuckyModal = false">
-      <div class="modal-content lucky-modal">
-        <div class="modal-header">
-          <h3>🎲 Tirage au sort</h3>
-          <button class="btn-close" @click="showLuckyModal = false">✕</button>
+    <!-- 📱 VUE MOBILE PLEIN ÉCRAN : LUCKY PICK -->
+    <div v-else-if="isLuckyPickOpen && isMobile" class="fullscreen-mobile-view">
+      <div class="mobile-view-header">
+        <button class="btn-back" @click="isLuckyPickOpen = false">← Collection</button>
+        <h3>🎲 Lucky Pick</h3>
+      </div>
+      <div class="mobile-view-content">
+        <!-- Composant affiché directement dans la page -->
+        <LuckyPickView />
+      </div>
+    </div>
+
+    <!-- 💻 / 📱 CONTENU PRINCIPAL DE LA COLLECTION -->
+    <template v-else>
+      <!-- EN-TÊTE DESKTOP -->
+      <header class="page-header desktop-only">
+        <div class="header-titles">
+          <h2>Ma Médiathèque</h2>
+          <p class="stats-text">{{ collectionStore.stats }}</p>
         </div>
 
-        <div v-if="luckyItem" class="lucky-display">
-          <img 
-            :src="luckyItem.cover || defaultCover" 
-            :alt="luckyItem.title" 
-            class="lucky-card-img"
-          />
-          <span class="type-tag">{{ getTypeLabel(luckyItem.type) }}</span>
-          <div class="lucky-title">{{ luckyItem.title }}</div>
-          <div class="lucky-artist">{{ luckyItem.artist }} {{ luckyItem.year ? `(${luckyItem.year})` : '' }}</div>
-          
-          <p v-if="!isRolling" class="lucky-success">
-            🎉 Voilà ton choix pour aujourd'hui !
-          </p>
-          <p v-else class="lucky-rolling">
-            Mélange en cours... 🎲
-          </p>
-        </div>
+        <div class="header-actions">
+          <button class="btn btn-lucky" @click="isLuckyPickOpen = true">
+            🎲 Lucky Pick
+          </button>
 
-        <div class="lucky-actions">
-          <button class="btn btn-secondary" @click="runLuckyDip" :disabled="isRolling">
-            🔄 Retirer au sort
+          <button class="btn btn-primary" @click="$router.push('/search')">
+            {{ isSearchOpen ? '✕ Fermer' : '➕ Ajouter' }}
+          </button>
+
+          <button class="btn btn-primary" @click="$router.push('/account')">
+            {{ isSearchOpen ? '✕ Fermer' : '👤 Mon compte' }}
           </button>
         </div>
+      </header>
+
+      <!-- PANNEAU DE RECHERCHE DESKTOP -->
+      <div v-if="isSearchOpen && !isMobile" class="search-section desktop-only">
+        <ApiSearchPanel />
       </div>
-    </div>
+
+      <!-- BARRE DE FILTRES ET TRI -->
+      <section class="toolbar">
+        <div class="filters-group">
+          <input 
+            v-model="collectionStore.searchQuery" 
+            type="text" 
+            placeholder="🔍 Titre, artiste..." 
+            class="input-search"
+          />
+
+          <select v-model="collectionStore.activeTypeFilter" class="select-chip desktop-only">
+            <option value="all">📂 Tout</option>
+            <option value="vinyl">🎵 Musique</option>
+            <option value="book">📚 Livres</option>
+            <option value="movie">🎬 Films</option>
+          </select>
+
+          <button 
+            class="chip-btn" 
+            :class="{ active: collectionStore.showWishlistOnly }"
+            @click="collectionStore.showWishlistOnly = !collectionStore.showWishlistOnly"
+          >
+            ✨ Wishlist
+          </button>
+        </div>
+
+        <button class="chip-btn" @click="isSortModalOpen = true">
+          🔃 Trier
+        </button>
+
+        <div class="view-mode-group">
+          <button 
+            class="mode-btn" 
+            :class="{ active: !isListView }" 
+            @click="isListView = false"
+            title="Vue Grille"
+          >
+            ▦
+          </button>
+          <button 
+            class="mode-btn" 
+            :class="{ active: isListView }" 
+            @click="isListView = true"
+            title="Vue Liste"
+          >
+            ≡
+          </button>
+        </div>
+      </section>
+
+      <!-- CHARGEMENT / LISTE VIDE / CARTES -->
+      <div v-if="collectionStore.loading" class="loading-state">
+        <p>Chargement des œuvres...</p>
+      </div>
+
+      <div v-else-if="collectionStore.filteredItems.length === 0" class="empty-state">
+        <p>Aucune œuvre ne correspond à vos critères.</p>
+      </div>
+
+      <div 
+        v-else 
+        class="items-container" 
+        :class="{ 'grid-view': !isListView, 'list-view': isListView }"
+      >
+        <ItemCard 
+          v-for="item in collectionStore.filteredItems" 
+          :key="item.id" 
+          :item="item" 
+          :is-list-view="isListView"
+          @delete="deleteItem"
+        />
+      </div>
+
+      <!-- MODALE DESKTOP LUCKY PICK -->
+      <LuckyPickModal 
+        v-if="!isMobile"
+        :is-open="isLuckyPickOpen" 
+        @close="isLuckyPickOpen = false" 
+      />
+
+      <SortModal 
+        :is-open="isSortModalOpen" 
+        @close="isSortModalOpen = false" 
+      />
+    </template>
+
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useCollectionStore } from '../stores/collection';
 import ItemCard from '../components/ItemCard.vue';
 import ApiSearchPanel from '../components/ApiSearchPanel.vue';
-import EmptyState from '../components/EmptyState.vue';
+import LuckyPickModal from '../components/LuckyPickModal.vue';
+import LuckyPickView from '../components/LuckyPickModal.vue'; // Réutilisation du composant
+import SortModal from '../components/SortModal.vue';
 
-const router = useRouter();
+const isSortModalOpen = ref(false);
+
 const authStore = useAuthStore();
 const collectionStore = useCollectionStore();
 
-const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
+const isSearchOpen = ref(false);
+const isLuckyPickOpen = ref(false);
+const isListView = ref(false);
+const isMobile = ref(window.innerWidth <= 768);
 
-const currentTab = ref('library');
-const showSortModal = ref(false);
-
-const activeTabTitle = computed(() => {
-  if (currentTab.value === 'add') return '➕ Ajout';
-  if (currentTab.value === 'account') return '👤 Profil';
-  return collectionStore.showWishlistOnly ? '✨ Ma Wishlist' : '📚 Ma Collection';
-});
-
-const currentSortLabel = computed(() => {
-  const map = { title: 'Titre', artist: 'Auteur', year: 'Année' };
-  return map[collectionStore.sortBy] || 'Tri';
-});
-
-// Stats profil
-const userInitial = computed(() => {
-  return authStore.user?.email ? authStore.user.email.charAt(0).toUpperCase() : '👤';
-});
-
-const countCollection = computed(() => collectionStore.items.filter(i => !i.is_wishlist).length);
-const countWishlist = computed(() => collectionStore.items.filter(i => i.is_wishlist).length);
-const countVinyls = computed(() => collectionStore.items.filter(i => i.type === 'vinyl').length);
-const countBooks = computed(() => collectionStore.items.filter(i => i.type === 'book').length);
-
-// Lucky Dip
-const showLuckyModal = ref(false);
-const luckyItem = ref(null);
-const isRolling = ref(false);
-
-onMounted(() => {
-  collectionStore.fetchItems();
-});
-
-async function handleSignOut() {
-  collectionStore.clearMemory();
-  await authStore.signOut();
-  router.push('/');
+function handleResize() {
+  isMobile.value = window.innerWidth <= 768;
 }
 
-async function confirmDelete(id) {
-  if (confirm("Supprimer cet élément ?")) {
+onMounted(async () => {
+  window.addEventListener('resize', handleResize);
+  await collectionStore.fetchItems();
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
+});
+
+watch(
+  () => authStore.user,
+  async (newUser) => {
+    if (newUser) {
+      await collectionStore.fetchItems();
+    }
+  },
+  { immediate: true }
+);
+
+function selectTab(type) {
+  isSearchOpen.value = false;
+  isLuckyPickOpen.value = false;
+  collectionStore.activeTypeFilter = type;
+}
+
+function openMobileSearch() {
+  isLuckyPickOpen.value = false;
+  isSearchOpen.value = !isSearchOpen.value;
+}
+
+function openMobileLuckyPick() {
+  isSearchOpen.value = false;
+  isLuckyPickOpen.value = !isLuckyPickOpen.value;
+}
+
+async function deleteItem(id) {
+  if (confirm("Voulez-vous vraiment supprimer cet élément ?")) {
     await collectionStore.deleteItem(id);
   }
-}
-
-function getTypeLabel(type) {
-  const icons = { vinyl: '💿 Vinyle', book: '📚 Livre / BD', movie: '🎬 DVD' };
-  return icons[type] || 'Œuvre';
-}
-
-function runLuckyDip() {
-  const pool = collectionStore.filteredItems;
-
-  if (pool.length === 0) {
-    alert("Aucun élément disponible dans cette catégorie pour le tirage au sort !");
-    return;
-  }
-
-  showLuckyModal.value = true;
-  isRolling.value = true;
-
-  let counter = 0;
-  const maxSteps = 12;
-
-  const interval = setInterval(() => {
-    luckyItem.value = pool[Math.floor(Math.random() * pool.length)];
-    counter++;
-
-    if (counter >= maxSteps) {
-      clearInterval(interval);
-      luckyItem.value = pool[Math.floor(Math.random() * pool.length)];
-      isRolling.value = false;
-    }
-  }, 100);
 }
 </script>
 
 <style scoped>
-/* App Shell & Header */
-.app-shell {
+.collection-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100vw;
-  max-width: 100vw;
-  overflow: hidden;
-  background: #121212;
-  color: #fff;
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  padding-bottom: 20px; /* Espace normal en desktop */
 }
 
-.app-header {
-  height: auto;
-  min-height: 52px;
-  padding-top: calc(env(safe-area-inset-top) + 8px);
-  padding-bottom: 8px;
-  padding-left: 16px;
-  padding-right: 16px;
-  background: #18181b;
-  border-bottom: 1px solid #27272a;
+/* Dégagement spécifique pour la Tab Bar seulement sur Mobile */
+@media (max-width: 768px) {
+  .collection-page {
+    padding: 12px;
+    padding-bottom: 90px; /* Dégage la barre fixe */
+  }
+}
+
+/* DESKTOP / MOBILE DISPLAY UTILS */
+.desktop-only { display: flex; }
+.mobile-only { display: none; }
+
+@media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+  .mobile-only { display: flex !important; }
+  .collection-page { padding: 12px; padding-bottom: 90px; }
+}
+
+/* VUES PLEIN ÉCRAN MOBILE */
+.fullscreen-mobile-view {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 65px; /* Laisse apparaitre la Tab Bar en bas */
+  background: #09090b;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.mobile-view-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-shrink: 0;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  font-size: 1.1rem;
-}
-
-.view-title-badge {
-  font-size: 0.75rem;
-  background: #27272a;
-  color: #60a5fa;
-  padding: 3px 8px;
-  border-radius: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.app-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
-  padding-bottom: calc(80px + env(safe-area-inset-bottom));
-  -webkit-overflow-scrolling: touch;
-}
-
-.tab-page {
-  max-width: 1000px;
-  margin: 0 auto;
-}
-
-/* NAVBAR ET COMMANDES OPTIMISÉES */
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   margin-bottom: 16px;
-  background: #18181b;
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px solid #27272a;
+  border-bottom: 1px solid #27272a;
+  padding-bottom: 12px;
 }
 
-.search-row {
-  display: flex;
-  gap: 8px;
-}
-
-.search-input-wrapper {
-  flex: 1;
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search-icon {
-  position: absolute;
-  left: 10px;
-  font-size: 0.85rem;
-  opacity: 0.6;
-}
-
-.search-input-wrapper input {
-  width: 100%;
-  padding: 8px 30px 8px 32px;
-  background: #09090b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
+.mobile-view-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
   color: #fff;
-  font-size: 0.85rem;
 }
 
-.btn-clear {
-  position: absolute;
-  right: 8px;
-  background: none;
-  border: none;
-  color: #a1a1aa;
-  cursor: pointer;
+.btn-back {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #3b82f6;
+  padding: 6px 12px;
+  border-radius: 8px;
   font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
 }
+
+/* EN-TÊTE DESKTOP & TOOLBAR */
+.page-header { justify-content: space-between; align-items: center; }
+.header-titles h2 { margin: 0; font-size: 1.5rem; color: #fff; }
+.stats-text { margin: 4px 0 0 0; font-size: 0.85rem; color: #a1a1aa; }
+.header-actions { display: flex; gap: 10px; }
 
 .btn-lucky {
-  background: #8b5cf6;
-  border: none;
-  width: 36px;
-  height: 36px;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #c084fc;
+  font-weight: 600;
+  padding: 8px 14px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
 }
 
-/* Ligne des filtres */
-.controls-row {
+.search-section {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* --------------------------------------------------
+   BARRE D'OUTILS ET FILTRES (RESPONSIVE OPTIMISÉ)
+-------------------------------------------------- */
+.toolbar {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   width: 100%;
 }
 
-.chip-btn, .select-chip {
-  background: #09090b;
-  border: 1px solid #27272a;
-  color: #a1a1aa;
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  height: 32px;
+.filters-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: 1;
+  min-width: 0; /* Empêche le débordement Flexbox */
 }
 
-.chip-wishlist.active {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-  border-color: #f59e0b;
-}
-
-.select-chip {
-  color: #60a5fa;
+.input-search {
+  flex: 1;
+  min-width: 0; /* Permet au champ de rétrécir correctement sur mobile */
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
   outline: none;
 }
 
-.chip-sort {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
+.input-search:focus {
+  border-color: #3b82f6;
 }
 
-/* Ligne du compteur et du sélecteur de vue */
-.stats-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 2px;
-}
-
-.stats-text {
-  font-size: 0.75rem;
-  color: #a1a1aa;
-}
-
-.view-toggle {
-  display: flex;
-  background: #09090b;
+.select-chip, .chip-btn {
+  background: #18181b;
   border: 1px solid #27272a;
+  color: #a1a1aa;
+  padding: 8px 10px;
   border-radius: 8px;
-  padding: 2px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
-.btn-toggle {
+.chip-btn.active {
+  background: #f59e0b;
+  color: #000;
+  border-color: #f59e0b;
+  font-weight: 600;
+}
+
+.view-mode-group {
+  display: flex;
+  gap: 2px;
+  background: #18181b;
+  border: 1px solid #27272a;
+  padding: 2px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.mode-btn {
   background: transparent;
   border: none;
-  color: #a1a1aa;
-  padding: 2px 6px;
-  border-radius: 6px;
+  color: #71717a;
+  padding: 6px 10px;
   cursor: pointer;
-  font-size: 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
 }
 
-.btn-toggle.active {
+.mode-btn.active {
   background: #27272a;
   color: #fff;
 }
 
-/* Grille & Liste */
-.items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
-  gap: 10px;
+/* 📱 AJUSTEMENTS SPÉCIFIQUES SMARTPHONE (<= 768px) */
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .filters-group {
+    gap: 6px;
+  }
+
+  .input-search {
+    font-size: 0.8rem;
+    padding: 7px 9px;
+  }
+
+  .chip-btn {
+    padding: 7px 9px;
+    font-size: 0.75rem;
+  }
+
+  .mode-btn {
+    padding: 5px 8px;
+    font-size: 0.8rem;
+  }
 }
 
-.items-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* GRILLE / LISTE */
+.items-container.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+.items-container.list-view { display: flex; flex-direction: column; gap: 8px; }
+.loading-state, .empty-state { text-align: center; padding: 40px; color: #a1a1aa; }
+
+/* Masquée par défaut sur Desktop / Grands écrans */
+.mobile-tab-bar {
+  display: none !important;
 }
 
-/* Profil & Stats */
-.profile-card {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 16px;
-  padding: 24px 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
+/* --------------------------------------------------
+   RESPONSIVE & GESTION DE LA TAB BAR
+-------------------------------------------------- */
 
-.avatar-circle {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: #3b82f6;
-  color: #fff;
-  font-size: 1.6rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12px;
-}
-
-.account-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  width: 100%;
-  margin: 20px 0;
-}
-
-.stat-card {
-  background: #09090b;
-  border: 1px solid #27272a;
-  border-radius: 10px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-value {
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: #60a5fa;
-}
-
-.stat-label {
-  font-size: 0.7rem;
-  color: #a1a1aa;
-}
-
-/* Bottom Tab Bar */
-.bottom-tab-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100vw;
-  height: calc(60px + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
-  background: #18181b;
-  border-top: 1px solid #27272a;
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  z-index: 1000;
+/* Affichée uniquement sur écran Mobile (<= 768px) */
+@media (max-width: 768px) {
+  .mobile-tab-bar {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 65px;
+    background: rgba(24, 24, 27, 0.98);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid #27272a;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 2000;
+    padding: 0 4px;
+  }
 }
 
 .tab-item {
   background: transparent;
   border: none;
-  color: #a1a1aa;
+  color: #71717a;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  flex: 1;
-  height: 100%;
-  cursor: pointer;
-}
-
-.tab-item.active {
-  color: #3b82f6;
-}
-
-.tab-icon {
-  font-size: 1.2rem;
-}
-
-.tab-label {
+  gap: 2px;
   font-size: 0.65rem;
-  font-weight: 600;
-}
-
-.tab-item-add .add-icon-bubble {
-  background: #3b82f6;
-  color: #fff;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.85rem;
-}
-
-/* Modales & Tri */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-}
-
-.modal-content {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 16px;
-  padding: 20px;
-  width: 90%;
-  max-width: 360px;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.sort-options-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 20px;
-  text-align: left;
-}
-
-.sort-option-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 0.8rem;
-  color: #a1a1aa;
-}
-
-.modal-select {
-  background: #09090b;
-  border: 1px solid #27272a;
-  color: #fff;
-  padding: 8px;
-  border-radius: 8px;
-}
-
-.toggle-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.toggle-btn {
-  background: #09090b;
-  border: 1px solid #27272a;
-  color: #a1a1aa;
-  padding: 8px;
-  border-radius: 8px;
-  font-size: 0.8rem;
   cursor: pointer;
-  text-align: left;
+  flex: 1;
 }
 
-.toggle-btn.active {
-  background: #27272a;
-  color: #60a5fa;
-  border-color: #3b82f6;
-}
-
-.btn-close {
-  background: none;
-  border: none;
-  color: #a1a1aa;
-  font-size: 1.2rem;
-  cursor: pointer;
-}
+.tab-icon { font-size: 1.1rem; }
+.tab-item.active { color: #3b82f6; font-weight: 700; }
+.tab-action-lucky.active, .tab-action-lucky { color: #c084fc; }
+.tab-action-add.active, .tab-action-add { color: #3b82f6; }
 </style>
