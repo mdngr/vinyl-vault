@@ -1,9 +1,5 @@
-# 💿 Vinyl Vault
+# Vue 3 + Vite
 
-Application Web simple pour gérer sa collection de vinyles connectée à l'API **Discogs** et **Supabase**.
+This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
 
-## Fonctionnalités
-- Search & Add automatique depuis l'API Discogs (Pochette, Année, Genre).
-- Stockage persistant dans une base de données **Supabase**.
-- Recherche et filtrage en temps réel.
-- Déploiement facile sur GitHub Pages.
+Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
