@@ -19,7 +19,6 @@
         <h3>🎲 Lucky Pick</h3>
       </div>
       <div class="mobile-view-content">
-        <!-- Composant affiché directement dans la page -->
         <LuckyPickView />
       </div>
     </div>
@@ -43,7 +42,7 @@
           </button>
 
           <button class="btn btn-primary" @click="$router.push('/account')">
-            {{ isSearchOpen ? '✕ Fermer' : '👤 Mon compte' }}
+            👤 Mon compte
           </button>
         </div>
       </header>
@@ -56,12 +55,22 @@
       <!-- BARRE DE FILTRES ET TRI -->
       <section class="toolbar">
         <div class="filters-group">
+          <!-- 🔍 DESKTOP : Input classique -->
           <input 
             v-model="collectionStore.searchQuery" 
             type="text" 
             placeholder="🔍 Titre, artiste..." 
-            class="input-search"
+            class="input-search desktop-only"
           />
+
+          <!-- 📱 MOBILE : Bouton loupe dédié -->
+          <button 
+            class="chip-btn mobile-only btn-search-trigger" 
+            :class="{ active: collectionStore.searchQuery || showMobileSearch }"
+            @click="toggleMobileSearch"
+          >
+            🔍 {{ collectionStore.searchQuery ? collectionStore.searchQuery : '' }}
+          </button>
 
           <select v-model="collectionStore.activeTypeFilter" class="select-chip desktop-only">
             <option value="all">📂 Tout</option>
@@ -78,6 +87,11 @@
             ✨ Wishlist
           </button>
         </div>
+
+        <!-- 🎲 BOUTON LUCKY PICK -->
+        <button v-if="isMobile" class="chip-btn btn-lucky-mobile" @click="isLuckyPickOpen = true">
+          🎲
+        </button>
 
         <button class="chip-btn" @click="isSortModalOpen = true">
           🔃 Trier
@@ -102,6 +116,29 @@
           </button>
         </div>
       </section>
+
+      <!-- 📱 MOBILE : OVERLAY / DÉROULANT DE RECHERCHE DANS LA COLLECTION -->
+      <div v-if="showMobileSearch && isMobile" class="mobile-search-overlay">
+        <div class="mobile-search-bar">
+          <input 
+            ref="mobileSearchInput"
+            v-model="collectionStore.searchQuery" 
+            type="search" 
+            placeholder="Titre, artiste..." 
+            class="mobile-input-search"
+          />
+          <button 
+            v-if="collectionStore.searchQuery" 
+            class="btn-clear-search" 
+            @click="collectionStore.searchQuery = ''"
+          >
+            ✕
+          </button>
+          <button class="btn-close-search" @click="showMobileSearch = false">
+            Fermer
+          </button>
+        </div>
+      </div>
 
       <!-- CHARGEMENT / LISTE VIDE / CARTES -->
       <div v-if="collectionStore.loading" class="loading-state">
@@ -128,7 +165,7 @@
 
       <!-- MODALE DESKTOP LUCKY PICK -->
       <LuckyPickModal 
-        v-if="!isMobile"
+        v-if="!isMobile && isLuckyPickOpen"
         :is-open="isLuckyPickOpen" 
         @close="isLuckyPickOpen = false" 
       />
@@ -139,17 +176,74 @@
       />
     </template>
 
+    <!-- 📱 BARRE DE NAVIGATION EN BAS POUR MOBILE -->
+    <nav v-if="isMobile" class="mobile-tab-bar">
+      <button 
+        class="tab-item" 
+        :class="{ active: collectionStore.activeTypeFilter === 'all' && !isSearchOpen && !isLuckyPickOpen }"
+        @click="selectTab('all')"
+      >
+        <span class="tab-icon">📁</span>
+        <span>Tout</span>
+      </button>
+
+      <button 
+        class="tab-item" 
+        :class="{ active: collectionStore.activeTypeFilter === 'vinyl' && !isSearchOpen && !isLuckyPickOpen }"
+        @click="selectTab('vinyl')"
+      >
+        <span class="tab-icon">🎵</span>
+        <span>Musique</span>
+      </button>
+
+      <button 
+        class="tab-item" 
+        :class="{ active: collectionStore.activeTypeFilter === 'book' && !isSearchOpen && !isLuckyPickOpen }"
+        @click="selectTab('book')"
+      >
+        <span class="tab-icon">📚</span>
+        <span>Livres</span>
+      </button>
+
+      <button 
+        class="tab-item" 
+        :class="{ active: collectionStore.activeTypeFilter === 'movie' && !isSearchOpen && !isLuckyPickOpen }"
+        @click="selectTab('movie')"
+      >
+        <span class="tab-icon">🎬</span>
+        <span>Films</span>
+      </button>
+
+      <button 
+        class="tab-item tab-action-lucky" 
+        :class="{ active: isLuckyPickOpen }"
+        @click="openMobileLuckyPick"
+      >
+        <span class="tab-icon">🎲</span>
+        <span>Lucky Pick</span>
+      </button>
+
+      <button 
+        class="tab-item tab-action-add" 
+        :class="{ active: isSearchOpen }"
+        @click="openMobileSearch"
+      >
+        <span class="tab-icon">➕</span>
+        <span>Ajouter</span>
+      </button>
+    </nav>
+
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useCollectionStore } from '../stores/collection';
 import ItemCard from '../components/ItemCard.vue';
 import ApiSearchPanel from '../components/ApiSearchPanel.vue';
 import LuckyPickModal from '../components/LuckyPickModal.vue';
-import LuckyPickView from '../components/LuckyPickModal.vue'; // Réutilisation du composant
+import LuckyPickView from '../components/LuckyPickModal.vue'; 
 import SortModal from '../components/SortModal.vue';
 
 const isSortModalOpen = ref(false);
@@ -159,6 +253,9 @@ const collectionStore = useCollectionStore();
 
 const isSearchOpen = ref(false);
 const isLuckyPickOpen = ref(false);
+const showMobileSearch = ref(false);
+const mobileSearchInput = ref(null);
+
 const isListView = ref(false);
 const isMobile = ref(window.innerWidth <= 768);
 
@@ -185,19 +282,31 @@ watch(
   { immediate: true }
 );
 
+function toggleMobileSearch() {
+  showMobileSearch.value = !showMobileSearch.value;
+  if (showMobileSearch.value) {
+    nextTick(() => {
+      mobileSearchInput.value?.focus();
+    });
+  }
+}
+
 function selectTab(type) {
   isSearchOpen.value = false;
   isLuckyPickOpen.value = false;
+  showMobileSearch.value = false;
   collectionStore.activeTypeFilter = type;
 }
 
 function openMobileSearch() {
   isLuckyPickOpen.value = false;
+  showMobileSearch.value = false;
   isSearchOpen.value = !isSearchOpen.value;
 }
 
 function openMobileLuckyPick() {
   isSearchOpen.value = false;
+  showMobileSearch.value = false;
   isLuckyPickOpen.value = !isLuckyPickOpen.value;
 }
 
@@ -216,15 +325,7 @@ async function deleteItem(id) {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
-  padding-bottom: 20px; /* Espace normal en desktop */
-}
-
-/* Dégagement spécifique pour la Tab Bar seulement sur Mobile */
-@media (max-width: 768px) {
-  .collection-page {
-    padding: 12px;
-    padding-bottom: 90px; /* Dégage la barre fixe */
-  }
+  padding-bottom: 20px;
 }
 
 /* DESKTOP / MOBILE DISPLAY UTILS */
@@ -243,7 +344,7 @@ async function deleteItem(id) {
   top: 0;
   left: 0;
   right: 0;
-  bottom: 65px; /* Laisse apparaitre la Tab Bar en bas */
+  bottom: 65px;
   background: #09090b;
   z-index: 1500;
   display: flex;
@@ -284,14 +385,24 @@ async function deleteItem(id) {
 .stats-text { margin: 4px 0 0 0; font-size: 0.85rem; color: #a1a1aa; }
 .header-actions { display: flex; gap: 10px; }
 
+.btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+}
+
 .btn-lucky {
   background: rgba(139, 92, 246, 0.2);
   border: 1px solid rgba(139, 92, 246, 0.4);
   color: #c084fc;
-  font-weight: 600;
-  padding: 8px 14px;
-  border-radius: 8px;
-  cursor: pointer;
 }
 
 .search-section {
@@ -301,9 +412,7 @@ async function deleteItem(id) {
   padding: 16px;
 }
 
-/* --------------------------------------------------
-   BARRE D'OUTILS ET FILTRES (RESPONSIVE OPTIMISÉ)
--------------------------------------------------- */
+/* BARRE D'OUTILS ET FILTRES */
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -317,12 +426,12 @@ async function deleteItem(id) {
   align-items: center;
   gap: 8px;
   flex: 1;
-  min-width: 0; /* Empêche le débordement Flexbox */
+  min-width: 0;
 }
 
 .input-search {
   flex: 1;
-  min-width: 0; /* Permet au champ de rétrécir correctement sur mobile */
+  min-width: 0;
   background: #18181b;
   border: 1px solid #27272a;
   color: #fff;
@@ -334,6 +443,62 @@ async function deleteItem(id) {
 
 .input-search:focus {
   border-color: #3b82f6;
+}
+
+/* 📱 BANDEAU MOBILE DE RECHERCHE DÉROULANT */
+.mobile-search-overlay {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 8px;
+  margin-top: -8px;
+}
+
+.mobile-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-input-search {
+  flex: 1;
+  background: #09090b;
+  border: 1px solid #3f3f46;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.mobile-input-search:focus {
+  border-color: #3b82f6;
+}
+
+.btn-clear-search {
+  background: transparent;
+  border: none;
+  color: #71717a;
+  font-size: 0.9rem;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.btn-close-search {
+  background: transparent;
+  border: none;
+  color: #3b82f6;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.btn-search-trigger {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .select-chip, .chip-btn {
@@ -380,7 +545,7 @@ async function deleteItem(id) {
   color: #fff;
 }
 
-/* 📱 AJUSTEMENTS SPÉCIFIQUES SMARTPHONE (<= 768px) */
+/* 📱 AJUSTEMENTS SMARTPHONE */
 @media (max-width: 768px) {
   .toolbar {
     flex-direction: row;
@@ -390,11 +555,6 @@ async function deleteItem(id) {
 
   .filters-group {
     gap: 6px;
-  }
-
-  .input-search {
-    font-size: 0.8rem;
-    padding: 7px 9px;
   }
 
   .chip-btn {
@@ -413,16 +573,11 @@ async function deleteItem(id) {
 .items-container.list-view { display: flex; flex-direction: column; gap: 8px; }
 .loading-state, .empty-state { text-align: center; padding: 40px; color: #a1a1aa; }
 
-/* Masquée par défaut sur Desktop / Grands écrans */
+/* 📱 BARRE DE NAVIGATION FIXE MOBILE (TAB BAR) */
 .mobile-tab-bar {
-  display: none !important;
+  display: none;
 }
 
-/* --------------------------------------------------
-   RESPONSIVE & GESTION DE LA TAB BAR
--------------------------------------------------- */
-
-/* Affichée uniquement sur écran Mobile (<= 768px) */
 @media (max-width: 768px) {
   .mobile-tab-bar {
     display: flex !important;
@@ -458,4 +613,20 @@ async function deleteItem(id) {
 .tab-item.active { color: #3b82f6; font-weight: 700; }
 .tab-action-lucky.active, .tab-action-lucky { color: #c084fc; }
 .tab-action-add.active, .tab-action-add { color: #3b82f6; }
+
+/* Bouton Lucky Pick compact dans la toolbar */
+.btn-lucky-mobile {
+  background: rgba(139, 92, 246, 0.2) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  color: #c084fc !important;
+  font-weight: 700;
+  padding: 8px 10px;
+}
+
+@media (max-width: 768px) {
+  .btn-lucky-mobile {
+    padding: 7px 10px;
+    font-size: 0.75rem;
+  }
+}
 </style>

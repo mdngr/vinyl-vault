@@ -19,9 +19,9 @@
         </div>
       </div>
 
-      <!-- CARTE STATISTIQUES -->
+      <!-- CARTE STATISTIQUES GLOBALES -->
       <div class="account-card stats-card">
-        <h4>📊 Mes Statistiques</h4>
+        <h4>📊 Vue d'ensemble</h4>
         <div class="stats-grid">
           <div class="stat-item">
             <span class="stat-label">Total d'œuvres</span>
@@ -34,6 +34,38 @@
           <div class="stat-item">
             <span class="stat-label">En Wishlist</span>
             <span class="stat-value">{{ wishlistItemsCount }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="account-card stats-card">
+        <h4>🏷️ Répartition par type</h4>
+        <div class="stats-types-list">
+          <div class="type-row">
+            <div class="type-label">
+              <span class="type-icon">🎵</span>
+              <span>Musique</span>
+            </div>
+            <span class="stat-value">{{ vinylsCount }}</span>
+            <span class="sub-stat">{{ vinylsWishlistCount }} en wishlist</span>
+          </div>
+
+          <div class="type-row">
+            <div class="type-label">
+              <span class="type-icon">📚</span>
+              <span>Livres</span>
+            </div>
+            <span class="stat-value">{{ booksCount }}</span>
+            <span class="sub-stat">{{ booksWishlistCount }} en wishlist</span>
+          </div>
+
+          <div class="type-row">
+            <div class="type-label">
+              <span class="type-icon">🎬</span>
+              <span>Films</span>
+            </div>
+            <span class="stat-value">{{ moviesCount }}</span>
+            <span class="sub-stat">{{ moviesWishlistCount }} en wishlist</span>
           </div>
         </div>
       </div>
@@ -70,12 +102,38 @@ const sendingEmail = ref(false);
 const userEmail = computed(() => authStore.user?.email || 'Utilisateur');
 const userId = computed(() => authStore.user?.id || 'Inconnu');
 
+// Stats globales
 const collectionItemsCount = computed(() => {
   return collectionStore.items.filter(i => !i.is_wishlist).length;
 });
 
 const wishlistItemsCount = computed(() => {
   return collectionStore.items.filter(i => i.is_wishlist).length;
+});
+
+// Stats par type
+const vinylsCount = computed(() => {
+  return collectionStore.items.filter(i => i.type === 'vinyl').length;
+});
+
+const vinylsWishlistCount = computed(() => {
+  return collectionStore.items.filter(i => i.type === 'vinyl' && i.is_wishlist).length;
+});
+
+const booksCount = computed(() => {
+  return collectionStore.items.filter(i => i.type === 'book').length;
+});
+
+const booksWishlistCount = computed(() => {
+  return collectionStore.items.filter(i => i.type === 'book' && i.is_wishlist).length;
+});
+
+const moviesCount = computed(() => {
+  return collectionStore.items.filter(i => i.type === 'movie').length;
+});
+
+const moviesWishlistCount = computed(() => {
+  return collectionStore.items.filter(i => i.type === 'movie' && i.is_wishlist).length;
 });
 
 async function resetPassword() {
@@ -98,7 +156,7 @@ async function resetPassword() {
 async function handleLogout() {
   if (confirm("Voulez-vous vraiment vous déconnecter ?")) {
     await authStore.logout();
-    router.push('/'); // 👈 Redirection vers la Landing Page
+    router.push('/');
   }
 }
 </script>
@@ -233,7 +291,18 @@ async function handleLogout() {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
+  gap: 4px;
+}
+
+.type-header {
+  display: flex;
+  align-items: center;
   gap: 6px;
+}
+
+.type-icon {
+  font-size: 1rem;
 }
 
 .stat-value {
@@ -247,6 +316,11 @@ async function handleLogout() {
   color: #a1a1aa;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+.sub-stat {
+  font-size: 0.7rem;
+  color: #71717a;
 }
 
 /* BOUTONS ACTIONS */
@@ -306,7 +380,6 @@ async function handleLogout() {
     margin-bottom: 8px;
   }
 
-  /* Le profil devient une grande carte centrée */
   .profile-card {
     flex-direction: column;
     text-align: center;
@@ -328,7 +401,6 @@ async function handleLogout() {
     font-size: 0.8rem;
   }
 
-  /* Les stats deviennent une liste verticale large et lisible */
   .stats-grid {
     grid-template-columns: 1fr;
     gap: 10px;
@@ -338,22 +410,86 @@ async function handleLogout() {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    padding: 18px 20px;
+    padding: 14px 18px;
     text-align: left;
   }
 
+  .type-item {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
   .stat-value {
-    font-size: 1.3rem;
+    font-size: 1.2rem;
   }
 
   .stat-label {
     font-size: 0.85rem;
   }
 
-  /* Boutons plus hauts pour le tactile */
   .btn-action {
     padding: 16px;
     font-size: 1rem;
+  }
+}
+
+stats-types-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.type-row {
+  background: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 14px 18px;
+  
+  /* Grille à 3 colonnes pour alignement parfait */
+  display: grid;
+  grid-template-columns: 140px 1fr 120px;
+  align-items: center;
+}
+
+.type-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a1a1aa;
+  text-transform: uppercase;
+}
+
+.type-icon {
+  font-size: 1.1rem;
+}
+
+.type-row .stat-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #3b82f6;
+  text-align: center; /* Aligne les chiffres exactement au centre de la colonne du milieu */
+}
+
+.type-row .sub-stat {
+  font-size: 0.75rem;
+  color: #71717a;
+  text-align: right; /* Aligne le sous-texte sur le bord droit */
+}
+
+/* Ajustement mobile */
+@media (max-width: 768px) {
+  .type-row {
+    grid-template-columns: 110px 1fr 100px;
+    padding: 12px 14px;
+  }
+  
+  .type-label {
+    font-size: 0.75rem;
   }
 }
 </style>
