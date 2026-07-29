@@ -160,7 +160,7 @@
 import { ref, computed, onUnmounted, nextTick } from 'vue';
 import { Html5Qrcode } from 'html5-qrcode';
 import Cropper from 'cropperjs';
-
+import 'cropperjs/dist/cropper.css';
 import { useCollectionStore } from '../stores/collection';
 import { getFormatLabel } from '../constants/formats';
 
@@ -409,7 +409,6 @@ async function moveToCollection(existingItem) {
 </script>
 
 <style scoped>
-@import 'cropperjs/dist/cropper.css';
 .search-panel { display: flex; flex-direction: column; gap: 16px; }
 .media-type-tabs { display: flex; gap: 8px; }
 .tab-btn { flex: 1; padding: 12px; background: #18181b; border: 1px solid #27272a; color: #a1a1aa; border-radius: 12px; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
