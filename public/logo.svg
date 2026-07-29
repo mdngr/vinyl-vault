@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Fond Application Sombre (Style iOS) -->
+  <rect width="512" height="512" rx="112" fill="#121212"/>
+  
+  <!-- Dégradé de fond subtil -->
+  <defs>
+    <linearGradient id="vaultGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a2b36"/>
+      <stop offset="100%" stop-color="#121215"/>
+    </linearGradient>
+    <linearGradient id="goldAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fond intérieur arrondi -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="url(#vaultGrad)"/>
+
+  <!-- Voûte / Temple stylisé (Culture Vault) -->
+  <path d="M 128 380 L 384 380 L 384 250 C 384 170 327 110 256 110 C 185 110 128 170 128 250 Z" 
+        fill="none" 
+        stroke="url(#goldAccent)" 
+        stroke-width="18" 
+        stroke-linecap="round"/>
+
+  <!-- Vinyle central -->
+  <circle cx="256" cy="270" r="90" fill="#09090b" stroke="#3f3f46" stroke-width="8"/>
+  <circle cx="256" cy="270" r="65" fill="none" stroke="#27272a" stroke-width="4"/>
+  <circle cx="256" cy="270" r="40" fill="none" stroke="#27272a" stroke-width="4"/>
+  
+  <!-- Centre du vinyle (Macaron bleu) -->
+  <circle cx="256" cy="270" r="28" fill="#3b82f6"/>
+  <circle cx="256" cy="270" r="8" fill="#121212"/>
+
+  <!-- Socle / Base de la Voûte -->
+  <rect x="108" y="380" width="296" height="20" rx="10" fill="#60a5fa"/>
+</svg>

@@ -1,10 +1,11 @@
 <template>
-  <div class="vinyl-card" :class="{ 'is-wishlist': item.is_wishlist }">
-    <div class="card-actions">
-      <button class="btn-card-action" @click="$emit('edit', item.id)" title="Modifier">✏️</button>
-      <button class="btn-card-action" @click="$emit('delete', item.id)" title="Supprimer">✕</button>
-    </div>
-
+  <div 
+    class="vinyl-card" 
+    :class="{ 
+      'is-wishlist': item.is_wishlist, 
+      'list-view': isListView 
+    }"
+  >
     <img 
       class="cover-img" 
       :src="item.cover || defaultCover" 
@@ -14,11 +15,17 @@
     />
 
     <div class="card-body">
-      <span v-if="item.is_wishlist" class="tag-wishlist">✨ Wishlist</span>
-      <span v-else class="type-tag">{{ typeBadge }}</span>
+      <div class="card-tags">
+        <span v-if="item.is_wishlist" class="tag-wishlist">✨ Wishlist</span>
+        <span v-else class="type-tag">{{ typeBadge }}</span>
+      </div>
 
       <div class="album-title">{{ item.title }}</div>
       <div class="artist-name">{{ item.artist }} {{ item.year ? `(${item.year})` : '' }}</div>
+    </div>
+
+    <div class="card-actions">
+      <button class="btn-card-action" @click="$emit('delete', item.id)" title="Supprimer">✕</button>
     </div>
   </div>
 </template>
@@ -27,15 +34,16 @@
 import { computed } from 'vue';
 
 const props = defineProps({
-  item: { type: Object, required: true }
+  item: { type: Object, required: true },
+  isListView: { type: Boolean, default: false }
 });
 
-defineEmits(['edit', 'delete']);
+defineEmits(['delete']);
 
 const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
 
 const typeBadge = computed(() => {
-  const icons = { vinyl: '💿 Vinyle', book: '📚 Livre / BD', movie: '🎬 DVD' };
+  const icons = { vinyl: '💿 Vinyle', book: '📚 Livre', movie: '🎬 DVD' };
   return icons[props.item.type] || 'Œuvre';
 });
 
@@ -45,6 +53,7 @@ function handleImgError(e) {
 </script>
 
 <style scoped>
+/* Mode Carte (Grille) */
 .vinyl-card {
   background: #18181b;
   border: 1px solid #27272a;
@@ -73,13 +82,13 @@ function handleImgError(e) {
 
 .album-title {
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   color: #fff;
   margin-top: 4px;
 }
 
 .artist-name {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #a1a1aa;
 }
 
@@ -105,8 +114,6 @@ function handleImgError(e) {
   position: absolute;
   top: 8px;
   right: 8px;
-  display: flex;
-  gap: 4px;
 }
 
 .btn-card-action {
@@ -114,8 +121,30 @@ function handleImgError(e) {
   border: none;
   color: #fff;
   border-radius: 50%;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   cursor: pointer;
+}
+
+/* Mode Ligne (Liste) */
+.vinyl-card.list-view {
+  flex-direction: row;
+  align-items: center;
+  padding: 8px 12px;
+}
+
+.vinyl-card.list-view .cover-img {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+}
+
+.vinyl-card.list-view .card-body {
+  padding: 0 12px;
+  flex: 1;
+}
+
+.vinyl-card.list-view .card-actions {
+  position: static;
 }
 </style>
