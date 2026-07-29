@@ -25,7 +25,7 @@
       </button>
     </div>
 
-    <!-- Formulaire de recherche repensé -->
+    <!-- Formulaire de recherche -->
     <form @submit.prevent="searchApi" class="search-form">
       <div class="search-input-wrapper">
         <input 
@@ -36,7 +36,7 @@
           class="search-input"
         />
         
-        <!-- Bouton Scan intégré directement DANS l'input -->
+        <!-- Bouton Scanner qui ouvre la caméra -->
         <button 
           type="button" 
           class="btn-scan-inside" 
@@ -47,21 +47,25 @@
         </button>
       </div>
 
-      <!-- Bouton Soumettre ergonomique -->
       <button type="submit" class="btn-submit" :disabled="loading">
         {{ loading ? 'Recherche...' : 'Chercher' }}
       </button>
     </form>
 
-    <!-- Zone Caméra pour le scan -->
-    <div v-if="isScanning" class="scanner-modal" @click.self="stopScanner">
+    <!-- 📷 MODALE CAMÉRA PLEIN ÉCRAN POUR LE SCAN -->
+    <div v-if="isScanning" class="scanner-modal">
       <div class="scanner-container">
         <div class="scanner-header">
-          <span>Scannez le code-barres</span>
-          <button class="btn-close" @click="stopScanner">✕</button>
+          <span>Scanner un code-barres</span>
+          <button class="btn-close-scanner" @click="stopScanner">✕ Fermer</button>
         </div>
-        <video ref="videoRef" class="scanner-video" autoplay playsinline></video>
-        <p class="scanner-hint">Pointe la caméra vers le EAN / ISBN</p>
+
+        <div class="video-wrapper">
+          <video ref="videoRef" class="scanner-video" autoplay playsinline muted></video>
+          <div class="scanner-laser"></div>
+        </div>
+
+        <p class="scanner-hint">Cadrez le code-barres (EAN / ISBN) dans la zone</p>
       </div>
     </div>
 
@@ -86,28 +90,23 @@
             <p class="res-artist">{{ res.artist }} {{ res.year ? `(${res.year})` : '' }}</p>
           </div>
 
-          <!-- Format figé (Badge) -->
           <div class="format-tag-wrapper">
             <span class="format-badge">{{ getFormatBadgeLabel(res.type, res.detectedFormat) }}</span>
           </div>
 
-          <!-- Actions conditionnelles -->
           <div class="res-actions">
-            <!-- CAS 1 : Déjà en Collection -->
             <div v-if="getExistingItem(res) && !getExistingItem(res).is_wishlist" class="already-owned-msg">
               ✅ Déjà dans ta collection
             </div>
 
-            <!-- CAS 2 : Déjà en Wishlist -->
             <button 
               v-else-if="getExistingItem(res) && getExistingItem(res).is_wishlist"
               class="btn-action btn-add-collection"
               @click="moveToCollection(getExistingItem(res))"
             >
-              ➕ Deplacer en Collection
+              ➕ Déplacer en Collection
             </button>
 
-            <!-- CAS 3 : Ni en collection ni en wishlist -->
             <template v-else>
               <button 
                 class="btn-action btn-add-collection" 
@@ -132,7 +131,7 @@
 <script setup>
 import { ref, computed, onUnmounted } from 'vue';
 import { useCollectionStore } from '../stores/collection';
-import { FORMATS_BY_TYPE, getFormatLabel } from '../constants/formats';
+import { getFormatLabel } from '../constants/formats';
 
 const collectionStore = useCollectionStore();
 const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
@@ -142,7 +141,7 @@ const query = ref('');
 const loading = ref(false);
 const results = ref([]);
 
-// Scanner
+// États Scanner Caméra
 const isScanning = ref(false);
 const videoRef = ref(null);
 let mediaStream = null;
@@ -242,39 +241,45 @@ async function searchApi() {
   }
 }
 
-// SCANNER
+// 📷 LOGIQUE DE DÉMARRAGE CAMÉRA & SCAN CODE-BARRES
 async function startScanner() {
   if (!('BarcodeDetector' in window)) {
-    alert("Le scanner automatique n'est pas supporté par ce navigateur.");
+    alert("Votre navigateur ne supporte pas la détection native de code-barres. Utilisez Chrome ou Safari sur mobile.");
     return;
   }
 
   isScanning.value = true;
   try {
+    // Demande l'accès à la caméra arrière prioritairement
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment' }
     });
 
     if (videoRef.value) {
       videoRef.value.srcObject = mediaStream;
+      await videoRef.value.play();
     }
 
     const barcodeDetector = new window.BarcodeDetector({
-      formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e']
+      formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128']
     });
 
+    // Boucle de scan active toutes les 350ms sur le flux vidéo
     scanInterval = setInterval(async () => {
-      if (videoRef.value && videoRef.value.readyState === 4) {
+      if (videoRef.value && videoRef.value.readyState === videoRef.value.HAVE_ENOUGH_DATA) {
         try {
           const barcodes = await barcodeDetector.detect(videoRef.value);
           if (barcodes.length > 0) {
-            query.value = barcodes[0].rawValue;
+            const scannedCode = barcodes[0].rawValue;
+            query.value = scannedCode;
             stopScanner();
-            searchApi();
+            searchApi(); // Lance automatiquement la recherche avec le code-barres trouvé
           }
-        } catch (e) {}
+        } catch (err) {
+          // Ignore les erreurs de frame isolées pendant le scan
+        }
       }
-    }, 500);
+    }, 350);
 
   } catch (err) {
     alert("Impossible d'accéder à la caméra : " + err.message);
@@ -286,6 +291,7 @@ function stopScanner() {
   if (scanInterval) clearInterval(scanInterval);
   if (mediaStream) {
     mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
   }
   isScanning.value = false;
 }
@@ -323,7 +329,6 @@ async function moveToCollection(existingItem) {
   gap: 16px; 
 }
 
-/* ONGLETS MÉDIA */
 .media-type-tabs { 
   display: flex; 
   gap: 8px; 
@@ -339,7 +344,6 @@ async function moveToCollection(existingItem) {
   font-weight: 600; 
   font-size: 0.9rem;
   cursor: pointer; 
-  transition: all 0.2s ease;
 }
 
 .tab-btn.active { 
@@ -348,7 +352,6 @@ async function moveToCollection(existingItem) {
   border-color: #3b82f6; 
 }
 
-/* FORMULAIRE RESTRUCTURÉ */
 .search-form {
   display: flex;
   flex-direction: column;
@@ -364,14 +367,13 @@ async function moveToCollection(existingItem) {
 
 .search-input {
   width: 100%;
-  padding: 14px 48px 14px 16px; /* Espace réservé à droite pour l'icône appareil photo */
+  padding: 14px 48px 14px 16px;
   background: #18181b;
   border: 1px solid #27272a;
   border-radius: 12px;
   color: #fff;
   font-size: 0.95rem;
   outline: none;
-  transition: border-color 0.2s ease;
 }
 
 .search-input:focus {
@@ -383,14 +385,13 @@ async function moveToCollection(existingItem) {
   right: 8px;
   background: transparent;
   border: none;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   padding: 8px;
   cursor: pointer;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s ease;
 }
 
 .btn-scan-inside:hover {
@@ -407,26 +408,100 @@ async function moveToCollection(existingItem) {
   font-weight: 700;
   font-size: 0.95rem;
   cursor: pointer;
-  transition: background 0.2s ease;
 }
 
 .btn-submit:hover:not(:disabled) {
   background: #2563eb;
 }
 
-.btn-submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+/* 📷 STYLING DE LA MODALE CAMÉRA SCANNER */
+.scanner-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 4000;
+  padding: 16px;
 }
 
-/* Modal Scanner */
-.scanner-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 3000; }
-.scanner-container { background: #18181b; border: 1px solid #27272a; border-radius: 16px; padding: 16px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
-.scanner-header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; }
-.scanner-video { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 8px; background: #000; }
-.scanner-hint { font-size: 0.75rem; color: #a1a1aa; text-align: center; }
+.scanner-container {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 20px;
+  padding: 20px;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
 
-/* GRILLE ET CARTES DE RÉSULTATS */
+.scanner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  color: #fff;
+  font-weight: 700;
+}
+
+.btn-close-scanner {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.video-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3/4;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid #3f3f46;
+}
+
+.scanner-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Ligne laser animée pour le style */
+.scanner-laser {
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: #ef4444;
+  box-shadow: 0 0 10px #ef4444;
+  animation: scanLaser 2s infinite ease-in-out;
+}
+
+@keyframes scanLaser {
+  0%, 100% { top: 20%; }
+  50% { top: 80%; }
+}
+
+.scanner-hint {
+  font-size: 0.8rem;
+  color: #a1a1aa;
+  text-align: center;
+  margin: 0;
+}
+
+/* RÉSULTATS */
 .results-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -530,7 +605,6 @@ async function moveToCollection(existingItem) {
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: all 0.15s ease;
   white-space: nowrap;
 }
 
@@ -562,16 +636,13 @@ async function moveToCollection(existingItem) {
   border-radius: 6px;
 }
 
-/* Adaptation Ordinateur (Desktop) */
 @media (min-width: 769px) {
   .search-form {
     flex-direction: row;
   }
-
   .search-input-wrapper {
     flex: 1;
   }
-
   .btn-submit {
     width: auto;
     padding: 0 24px;
