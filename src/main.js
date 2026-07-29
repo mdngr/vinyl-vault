@@ -138,29 +138,45 @@ loginForm.addEventListener('submit', async (e) => {
 // 3. BASE DE DONNÉES SUPABASE (CRUD)
 // ==========================================
 
+// --- Récupération des données (avec secours LocalStorage pour le vide-grenier) ---
 async function fetchItems() {
-    const { data, error } = await supabase
-        .from('vinyls')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error('Erreur Supabase :', error.message);
-        return;
+    // 1. Charger immédiatement le cache local s'il existe (affichage instantané sans réseau)
+    const localData = localStorage.getItem('culture_vault_cache');
+    if (localData) {
+        try {
+            items = JSON.parse(localData);
+            setViewMode(currentViewMode);
+            updateStats();
+        } catch (e) { console.warn("Erreur lecture cache local", e); }
     }
 
-    items = data.map(item => ({
-        id: item.id,
-        title: item.title,
-        artist: item.artist,
-        year: item.year,
-        genre: item.genre,
-        cover: item.cover,
-        type: item.type || 'vinyl'
-    }));
+    // 2. Tenter la mise à jour depuis Supabase
+    try {
+        const { data, error } = await supabase
+            .from('vinyls')
+            .select('*')
+            .order('created_at', { ascending: false });
 
-    setViewMode(currentViewMode);
-    updateStats();
+        if (!error && data) {
+            items = data.map(item => ({
+                id: item.id,
+                title: item.title,
+                artist: item.artist,
+                year: item.year,
+                genre: item.genre,
+                cover: item.cover,
+                type: item.type || 'vinyl'
+            }));
+
+            // Sauvegarder dans le stockage physique du téléphone
+            localStorage.setItem('culture_vault_cache', JSON.stringify(items));
+
+            setViewMode(currentViewMode);
+            updateStats();
+        }
+    } catch (err) {
+        console.warn("Réseau indisponible : utilisation de la version hors-ligne enregistrée.", err);
+    }
 }
 
 async function addItem(item) {
