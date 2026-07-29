@@ -33,6 +33,7 @@ const stats = document.getElementById('stats');
 
 // Auth DOM
 const btnAuth = document.getElementById('btn-auth');
+const userBadge = document.getElementById('user-badge');
 const loginModal = document.getElementById('login-modal');
 const btnCloseLogin = document.getElementById('btn-close-login');
 const loginForm = document.getElementById('login-form');
@@ -69,9 +70,6 @@ const luckyModal = document.getElementById('lucky-modal');
 const btnCloseLucky = document.getElementById('btn-close-lucky');
 const btnRetryLucky = document.getElementById('btn-retry-lucky');
 const luckyDisplay = document.getElementById('lucky-display');
-
-// User badget
-const userBadge = document.getElementById('user-badge');
 
 // ==========================================
 // 1. SWITCHER DE VUE (GRID / LIST)
@@ -110,6 +108,7 @@ async function checkUserSession() {
 function updateUIForAuth(user) {
     currentUser = user;
     
+    // VIDAGE IMPÉRATIF POUR ÉVITER LES FUITES DE CACHE ENTRE COMPTES
     items = [];
     grid.innerHTML = '';
     
@@ -122,25 +121,25 @@ function updateUIForAuth(user) {
         btnAuth.className = 'btn btn-logout';
         if (adminPanel) adminPanel.style.display = 'block';
 
-        // Afficher l'email de l'utilisateur connecté
         if (userBadge) {
             userBadge.textContent = user.email;
             userBadge.title = `Connecté en tant que ${user.email}`;
             userBadge.style.display = 'inline-flex';
         }
+
+        fetchItems();
     } else {
         if (authIcon) authIcon.textContent = '🔒';
         if (authText) authText.textContent = 'Connexion / Inscription';
         btnAuth.className = 'btn btn-login';
         if (adminPanel) adminPanel.style.display = 'none';
 
-        // Masquer l'étiquette si déconnecté
         if (userBadge) {
             userBadge.style.display = 'none';
         }
+
+        updateStats();
     }
-    
-    fetchItems();
 }
 
 btnAuth.addEventListener('click', () => {
@@ -199,60 +198,64 @@ loginForm.addEventListener('submit', async (e) => {
 });
 
 // ==========================================
-// 3. BASE DE DONNÉES (ISOLATION ET CACHE LOCAL)
+// 3. BASE DE DONNÉES (ISOLATION STRICTE & CACHE)
 // ==========================================
 
 async function fetchItems() {
-    // Si aucun utilisateur n'est connecté, on remet tout à zéro
-    if (!currentUser) {
+    if (!currentUser || !currentUser.id) {
         items = [];
         renderItems();
         updateStats();
         return;
     }
 
-    // Réinitialisation explicite avant de charger le cache du nouvel utilisateur
+    const currentUserId = currentUser.id;
+    const cacheKey = `culture_vault_cache_${currentUserId}`;
+
     items = [];
 
-    const cacheKey = `culture_vault_cache_${currentUser.id}`;
-
-    // 1. Restauration du cache local propre à CET utilisateur uniquement
+    // 1. Charger le cache local UNIQUEMENT s'il appartient à cet utilisateur
     const localCache = localStorage.getItem(cacheKey);
     if (localCache) {
         try {
-            items = JSON.parse(localCache);
-            setViewMode(currentViewMode);
-            updateStats();
-        } catch (e) { 
-            console.warn("Erreur lecture cache local", e); 
+            const parsed = JSON.parse(localCache);
+            if (Array.isArray(parsed)) {
+                items = parsed;
+                setViewMode(currentViewMode);
+                updateStats();
+            }
+        } catch (e) {
+            console.warn("Erreur de lecture du cache local", e);
         }
     }
 
-    // 2. Synchronisation sécurisée via Supabase
+    // 2. Synchronisation Supabase avec contrôle strict de la session
     try {
         const { data, error } = await supabase
             .from('vinyls')
             .select('*')
             .order('created_at', { ascending: false });
 
-        if (!error && data) {
-            items = data.map(item => ({
-                id: item.id,
-                title: item.title,
-                artist: item.artist,
-                year: item.year,
-                genre: item.genre,
-                cover: item.cover,
-                type: item.type || 'vinyl',
-                is_wishlist: !!item.is_wishlist
-            }));
+        if (currentUser && currentUser.id === currentUserId) {
+            if (!error && data) {
+                items = data.map(item => ({
+                    id: item.id,
+                    title: item.title,
+                    artist: item.artist,
+                    year: item.year,
+                    genre: item.genre,
+                    cover: item.cover,
+                    type: item.type || 'vinyl',
+                    is_wishlist: !!item.is_wishlist
+                }));
 
-            localStorage.setItem(cacheKey, JSON.stringify(items));
-            setViewMode(currentViewMode);
-            updateStats();
+                localStorage.setItem(cacheKey, JSON.stringify(items));
+                setViewMode(currentViewMode);
+                updateStats();
+            }
         }
     } catch (err) {
-        console.warn("Réseau indisponible, utilisation du cache local.", err);
+        console.warn("Réseau indisponible, affichage du cache local utilisateur.", err);
     }
 }
 
