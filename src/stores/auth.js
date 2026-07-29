@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { supabase } from '../services/supabase';
+import router from '../router';
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -50,10 +51,10 @@ export const useAuthStore = defineStore('auth', {
     },
 
     // 4. Déconnexion (signOut)
-    async signOut() {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+    async logout() {
+      await supabase.auth.signOut();
       this.user = null;
+      router.push('/'); // 👈 Redirige vers la landing page sur chaque logout
     }
   }
 });

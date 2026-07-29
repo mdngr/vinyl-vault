@@ -98,7 +98,7 @@ async function resetPassword() {
 async function handleLogout() {
   if (confirm("Voulez-vous vraiment vous déconnecter ?")) {
     await authStore.logout();
-    router.push('/login');
+    router.push('/'); // 👈 Redirection vers la Landing Page
   }
 }
 </script>
