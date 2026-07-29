@@ -74,11 +74,11 @@
     <div class="vinyl-grid" id="vinyl-grid"></div>
 </div>
 
-<!-- Modal Connexion Admin -->
+<!-- Modal Auth (Connexion / Inscription) -->
 <div id="login-modal" class="modal" style="display: none;">
     <div class="modal-content login-content">
         <div class="modal-header">
-            <h3>🔒 Espace Administrateur</h3>
+            <h3 id="auth-modal-title">🔓 Connexion à mon compte</h3>
             <button id="btn-close-login" class="btn-close" type="button">✕</button>
         </div>
         <form id="login-form">
@@ -90,8 +90,13 @@
                 <label for="login-password">Mot de passe</label>
                 <input type="password" id="login-password" required placeholder="••••••••">
             </div>
-            <button type="submit" class="btn btn-primary">Se connecter</button>
+
+            <button type="submit" id="btn-auth-submit" class="btn btn-primary" style="margin-top:10px;">Se connecter</button>
         </form>
+
+        <div style="margin-top: 15px; text-align: center; font-size: 0.85rem;">
+            <a href="#" id="toggle-auth-mode" style="color: var(--accent); text-decoration: none;">Pas encore de compte ? S'inscrire</a>
+        </div>
     </div>
 </div>
 

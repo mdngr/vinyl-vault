@@ -17,6 +17,7 @@ let currentViewMode = window.innerWidth < 768 ? 'list' : 'masonry';
 let html5QrCode = null;
 let currentUser = null;
 let videoTrack = null;
+let isSignUpMode = false;
 
 // --- Sélection des Éléments DOM ---
 const grid = document.getElementById('vinyl-grid');
@@ -36,6 +37,9 @@ const loginModal = document.getElementById('login-modal');
 const btnCloseLogin = document.getElementById('btn-close-login');
 const loginForm = document.getElementById('login-form');
 const adminPanel = document.getElementById('admin-panel');
+const toggleAuthModeBtn = document.getElementById('toggle-auth-mode');
+const authModalTitle = document.getElementById('auth-modal-title');
+const btnAuthSubmit = document.getElementById('btn-auth-submit');
 
 // View Switcher DOM
 const btnViewGrid = document.getElementById('btn-view-grid');
@@ -88,7 +92,7 @@ if (btnViewGrid) btnViewGrid.addEventListener('click', () => setViewMode('masonr
 if (btnViewList) btnViewList.addEventListener('click', () => setViewMode('list'));
 
 // ==========================================
-// 2. AUTHENTIFICATION SUPABASE
+// 2. AUTHENTIFICATION MULTI-UTILISATEURS
 // ==========================================
 
 async function checkUserSession() {
@@ -106,49 +110,91 @@ function updateUIForAuth(user) {
     const authText = btnAuth.querySelector('.auth-text');
 
     if (user) {
-        if (authIcon) authIcon.textContent = '🔓';
+        if (authIcon) authIcon.textContent = '👤';
         if (authText) authText.textContent = 'Déconnexion';
         btnAuth.className = 'btn btn-logout';
         if (adminPanel) adminPanel.style.display = 'block';
     } else {
         if (authIcon) authIcon.textContent = '🔒';
-        if (authText) authText.textContent = 'Connexion Admin';
+        if (authText) authText.textContent = 'Connexion / Inscription';
         btnAuth.className = 'btn btn-login';
         if (adminPanel) adminPanel.style.display = 'none';
     }
-    renderItems(searchInput.value);
+    
+    fetchItems();
 }
 
 btnAuth.addEventListener('click', () => {
-    if (currentUser) supabase.auth.signOut();
-    else loginModal.style.display = 'flex';
+    if (currentUser) {
+        supabase.auth.signOut();
+    } else {
+        loginModal.style.display = 'flex';
+    }
 });
 
-btnCloseLogin.addEventListener('click', () => {
-    loginModal.style.display = 'none';
-});
+if (btnCloseLogin) {
+    btnCloseLogin.addEventListener('click', () => {
+        loginModal.style.display = 'none';
+    });
+}
+
+if (toggleAuthModeBtn) {
+    toggleAuthModeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        isSignUpMode = !isSignUpMode;
+        if (isSignUpMode) {
+            if (authModalTitle) authModalTitle.textContent = '📝 Créer un compte';
+            if (btnAuthSubmit) btnAuthSubmit.textContent = 'S\'inscrire';
+            toggleAuthModeBtn.textContent = 'Déjà un compte ? Se connecter';
+        } else {
+            if (authModalTitle) authModalTitle.textContent = '🔓 Connexion à mon compte';
+            if (btnAuthSubmit) btnAuthSubmit.textContent = 'Se connecter';
+            toggleAuthModeBtn.textContent = 'Pas encore de compte ? S\'inscrire';
+        }
+    });
+}
 
 loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const email = document.getElementById('login-email').value;
+    const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-        alert("Échec de connexion : " + error.message);
+    if (isSignUpMode) {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) {
+            alert("Erreur lors de l'inscription : " + error.message);
+        } else {
+            alert("Compte créé avec succès !");
+            loginModal.style.display = 'none';
+            loginForm.reset();
+        }
     } else {
-        loginModal.style.display = 'none';
-        loginForm.reset();
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+            alert("Échec de connexion : " + error.message);
+        } else {
+            loginModal.style.display = 'none';
+            loginForm.reset();
+        }
     }
 });
 
 // ==========================================
-// 3. BASE DE DONNÉES (CRUD & CACHE LOCAL)
+// 3. BASE DE DONNÉES (ISOLATION ET CACHE LOCAL)
 // ==========================================
 
 async function fetchItems() {
-    // 1. Restauration immédiate depuis LocalStorage (Mode Hors-Ligne Vide-Grenier)
-    const localCache = localStorage.getItem('culture_vault_cache');
+    if (!currentUser) {
+        items = [];
+        renderItems();
+        updateStats();
+        return;
+    }
+
+    const cacheKey = `culture_vault_cache_${currentUser.id}`;
+
+    // 1. Restauration du cache local propre à cet utilisateur
+    const localCache = localStorage.getItem(cacheKey);
     if (localCache) {
         try {
             items = JSON.parse(localCache);
@@ -157,7 +203,7 @@ async function fetchItems() {
         } catch (e) { console.warn("Erreur lecture cache local", e); }
     }
 
-    // 2. Synchronisation Supabase
+    // 2. Synchronisation sécurisée via Supabase
     try {
         const { data, error } = await supabase
             .from('vinyls')
@@ -176,7 +222,7 @@ async function fetchItems() {
                 is_wishlist: !!item.is_wishlist
             }));
 
-            localStorage.setItem('culture_vault_cache', JSON.stringify(items));
+            localStorage.setItem(cacheKey, JSON.stringify(items));
             setViewMode(currentViewMode);
             updateStats();
         }
@@ -186,9 +232,9 @@ async function fetchItems() {
 }
 
 async function addItem(item) {
-    if (!currentUser) return alert("Connexion requise pour ajouter des éléments.");
+    if (!currentUser) return alert("Veuillez vous connecter pour ajouter des éléments.");
 
-    const { error } = await supabase.from('vinyls').insert([{
+    const itemToInsert = {
         id: item.id,
         title: item.title,
         artist: item.artist,
@@ -196,13 +242,16 @@ async function addItem(item) {
         genre: item.genre,
         cover: item.cover,
         type: item.type,
-        is_wishlist: item.is_wishlist || false
-    }]);
+        is_wishlist: item.is_wishlist || false,
+        user_id: currentUser.id
+    };
+
+    const { error } = await supabase.from('vinyls').insert([itemToInsert]);
 
     if (error) return alert("Erreur Supabase : " + error.message);
 
-    items.unshift(item);
-    localStorage.setItem('culture_vault_cache', JSON.stringify(items));
+    items.unshift(itemToInsert);
+    localStorage.setItem(`culture_vault_cache_${currentUser.id}`, JSON.stringify(items));
     renderItems(searchInput.value);
     updateStats();
 }
@@ -214,7 +263,7 @@ window.deleteItem = async function(id) {
     if (error) return alert("Erreur de suppression : " + error.message);
 
     items = items.filter(i => i.id !== id);
-    localStorage.setItem('culture_vault_cache', JSON.stringify(items));
+    localStorage.setItem(`culture_vault_cache_${currentUser.id}`, JSON.stringify(items));
     renderItems(searchInput.value);
     updateStats();
 };
@@ -238,9 +287,11 @@ window.openEditModal = function(id) {
     editModal.style.display = 'flex';
 };
 
-btnCloseEdit.addEventListener('click', () => {
-    editModal.style.display = 'none';
-});
+if (btnCloseEdit) {
+    btnCloseEdit.addEventListener('click', () => {
+        editModal.style.display = 'none';
+    });
+}
 
 editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -267,13 +318,13 @@ editForm.addEventListener('submit', async (e) => {
     const index = items.findIndex(i => i.id === id);
     if (index !== -1) items[index] = { id, ...updatedData };
 
-    localStorage.setItem('culture_vault_cache', JSON.stringify(items));
+    localStorage.setItem(`culture_vault_cache_${currentUser.id}`, JSON.stringify(items));
     editModal.style.display = 'none';
     renderItems(searchInput.value);
 });
 
 // ==========================================
-// 4. MOTEUR APIS (RECHERCHE & PRIX REEL)
+// 4. MOTEUR APIS (RECHERCHE & COTES REELLES)
 // ==========================================
 
 async function searchAPI(queryOverride = null) {
@@ -296,7 +347,7 @@ async function searchAPI(queryOverride = null) {
     }
 }
 
-// A. Discogs (Vinyles + Cote d'occasion selon Release ID)
+// A. Discogs (Vinyles + Cote Release ID)
 async function searchDiscogs(query) {
     const isBarcode = /^\d+$/.test(query);
     const param = isBarcode ? `barcode=${encodeURIComponent(query)}` : `q=${encodeURIComponent(query)}`;
@@ -336,7 +387,7 @@ async function searchDiscogs(query) {
     );
 }
 
-// B. Livres & BDs (100% Open Library - Libre)
+// B. Livres & BDs (100% Open Library)
 async function searchBooks(query) {
     const isIsbn = /^\d+$/.test(query);
     const results = [];
@@ -590,7 +641,7 @@ async function stopScanner() {
 }
 
 // ==========================================
-// 6. RENDU GRAPHIQUE ET FILTRES SANS LAG
+// 6. RENDU GRAPHIQUE ET FILTRES
 // ==========================================
 
 function renderItems(filterText = '') {
@@ -733,4 +784,3 @@ if (btnCloseLucky) btnCloseLucky.addEventListener('click', () => {
 
 // Initialisation au chargement
 checkUserSession();
-fetchItems();
