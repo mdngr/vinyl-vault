@@ -70,6 +70,9 @@ const btnCloseLucky = document.getElementById('btn-close-lucky');
 const btnRetryLucky = document.getElementById('btn-retry-lucky');
 const luckyDisplay = document.getElementById('lucky-display');
 
+// User badget
+const userBadge = document.getElementById('user-badge');
+
 // ==========================================
 // 1. SWITCHER DE VUE (GRID / LIST)
 // ==========================================
@@ -106,6 +109,10 @@ async function checkUserSession() {
 
 function updateUIForAuth(user) {
     currentUser = user;
+    
+    items = [];
+    grid.innerHTML = '';
+    
     const authIcon = btnAuth.querySelector('.auth-icon');
     const authText = btnAuth.querySelector('.auth-text');
 
@@ -114,11 +121,23 @@ function updateUIForAuth(user) {
         if (authText) authText.textContent = 'Déconnexion';
         btnAuth.className = 'btn btn-logout';
         if (adminPanel) adminPanel.style.display = 'block';
+
+        // Afficher l'email de l'utilisateur connecté
+        if (userBadge) {
+            userBadge.textContent = user.email;
+            userBadge.title = `Connecté en tant que ${user.email}`;
+            userBadge.style.display = 'inline-flex';
+        }
     } else {
         if (authIcon) authIcon.textContent = '🔒';
         if (authText) authText.textContent = 'Connexion / Inscription';
         btnAuth.className = 'btn btn-login';
         if (adminPanel) adminPanel.style.display = 'none';
+
+        // Masquer l'étiquette si déconnecté
+        if (userBadge) {
+            userBadge.style.display = 'none';
+        }
     }
     
     fetchItems();
@@ -184,6 +203,7 @@ loginForm.addEventListener('submit', async (e) => {
 // ==========================================
 
 async function fetchItems() {
+    // Si aucun utilisateur n'est connecté, on remet tout à zéro
     if (!currentUser) {
         items = [];
         renderItems();
@@ -191,16 +211,21 @@ async function fetchItems() {
         return;
     }
 
+    // Réinitialisation explicite avant de charger le cache du nouvel utilisateur
+    items = [];
+
     const cacheKey = `culture_vault_cache_${currentUser.id}`;
 
-    // 1. Restauration du cache local propre à cet utilisateur
+    // 1. Restauration du cache local propre à CET utilisateur uniquement
     const localCache = localStorage.getItem(cacheKey);
     if (localCache) {
         try {
             items = JSON.parse(localCache);
             setViewMode(currentViewMode);
             updateStats();
-        } catch (e) { console.warn("Erreur lecture cache local", e); }
+        } catch (e) { 
+            console.warn("Erreur lecture cache local", e); 
+        }
     }
 
     // 2. Synchronisation sécurisée via Supabase

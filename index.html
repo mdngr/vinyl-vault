@@ -17,10 +17,13 @@
             <h1>🏛️ Culture Vault</h1>
             <div id="stats" class="stats-count">0 élément(s)</div>
         </div>
-        <div class="header-right">
+        <div id="auth-container" style="display: flex; align-items: center; gap: 10px;">
+            <!-- Élement pour afficher l'utilisateur -->
+            <span id="user-badge" class="user-badge" style="display: none;"></span>
+
             <button id="btn-auth" class="btn btn-login">
                 <span class="auth-icon">🔒</span>
-                <span class="auth-text">Connexion Admin</span>
+                <span class="auth-text">Connexion / Inscription</span>
             </button>
         </div>
     </header>
