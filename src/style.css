@@ -528,3 +528,30 @@ select { min-width: 180px; }
   border: 1px solid #e11d48;
   opacity: 0.85;
 }
+
+/* Badge de Prix Recommandé / Estimé */
+.price-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: #065f46;
+  color: #34d399;
+  font-size: 0.75rem;
+  font-weight: bold;
+  padding: 3px 8px;
+  border-radius: 12px;
+  margin-top: 4px;
+  border: 1px solid #059669;
+}
+
+.result-info .price-tag {
+  margin-top: 6px;
+}
+
+/* Affichage du prix sur la carte dans la bibliothèque */
+.card-price {
+  font-size: 0.8rem;
+  color: #34d399;
+  font-weight: 600;
+  margin-top: 2px;
+}

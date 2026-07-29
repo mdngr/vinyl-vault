@@ -298,12 +298,16 @@ async function searchDiscogs(query) {
 
     return (data.results || []).map(item => {
         const parts = item.title.split(' - ');
+        // Estimation basée sur les données ou prix moyen marché vinyle d'occasion
+        const suggestedPrice = item.lowest_price ? `${item.lowest_price} €` : '12 - 20 € (estimé)';
+
         return {
             title: parts[1] || item.title,
             artist: parts[0] || 'Artiste inconnu',
             year: item.year || '',
             genre: item.genre ? item.genre[0] : 'Musique',
-            cover: item.cover_image || item.thumb
+            cover: item.cover_image || item.thumb,
+            suggestedPrice: suggestedPrice
         };
     });
 }
@@ -315,12 +319,10 @@ async function searchBooks(query) {
 
     try {
         if (isIsbn) {
-            // A. Recherche directe par code-barres / ISBN
             const res = await fetch(`https://openlibrary.org/isbn/${query}.json`);
             if (res.ok) {
                 const b = await res.json();
                 
-                // Récupération du nom de l'auteur si disponible sous forme de clé
                 let authorName = 'Auteur inconnu';
                 if (b.authors && b.authors.length > 0) {
                     try {
@@ -329,39 +331,39 @@ async function searchBooks(query) {
                             const authorData = await authorRes.json();
                             authorName = authorData.name || authorName;
                         }
-                    } catch (e) {
-                        console.warn("Impossible de récupérer le nom de l'auteur", e);
-                    }
+                    } catch (e) {}
                 }
+
+                // Estimation selon le nombre de pages (BD / Roman grand format vs Poche)
+                const pages = b.number_of_pages || 0;
+                let priceEst = '3 - 5 € (Poche)';
+                if (pages > 0 && pages < 80) priceEst = '8 - 14 € (BD / Comic)';
+                else if (pages >= 80) priceEst = '5 - 10 € (Broché)';
 
                 results.push({
                     title: b.title || 'Livre',
                     artist: authorName,
                     year: b.publish_date ? b.publish_date.substring(0, 4) : '',
                     genre: 'Livre / BD',
-                    cover: `https://covers.openlibrary.org/b/isbn/${query}-L.jpg`
+                    cover: `https://covers.openlibrary.org/b/isbn/${query}-L.jpg`,
+                    suggestedPrice: priceEst
                 });
                 return results;
             }
         }
 
-        // B. Recherche par texte (Titre, Auteur, BD...)
         const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=8`);
         const data = await res.json();
 
         if (data.docs && data.docs.length > 0) {
             data.docs.forEach(doc => {
-                // Construction de l'URL de couverture haute résolution depuis leur CDN libre
-                const coverUrl = doc.cover_i 
-                    ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` 
-                    : '';
-
                 results.push({
                     title: doc.title || 'Titre inconnu',
                     artist: doc.author_name ? doc.author_name.join(', ') : 'Auteur inconnu',
                     year: doc.first_publish_year ? String(doc.first_publish_year) : '',
                     genre: doc.subject ? doc.subject[0] : 'Livre / BD',
-                    cover: coverUrl
+                    cover: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : '',
+                    suggestedPrice: '3 - 8 € (estimé)'
                 });
             });
         }
@@ -424,6 +426,7 @@ function displayResults(results, type) {
             <div class="result-info">
                 <div class="result-title">${item.title} ${duplicateBadgeHTML}</div>
                 <div class="result-sub">${item.artist} ${item.year ? `(${item.year})` : ''}</div>
+                ${item.suggestedPrice ? `<div class="price-tag">🏷️ Cote approx. : ${item.suggestedPrice}</div>` : ''}
             </div>
         `;
 
