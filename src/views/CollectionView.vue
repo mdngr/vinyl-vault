@@ -64,6 +64,7 @@
           />
 
           <select v-model="collectionStore.activeTypeFilter" class="select-chip desktop-only">
+            <option value="all">📂 Tout</option>
             <option value="vinyl">🎵 Musique</option>
             <option value="book">📚 Livres</option>
             <option value="movie">🎬 Films</option>

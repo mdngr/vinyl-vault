@@ -7,6 +7,15 @@
     <nav v-if="authStore.user" class="mobile-tab-bar mobile-only">
       <button 
         class="tab-item" 
+        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'all' }"
+        @click="navToCollection('all')"
+      >
+        <span class="tab-icon">📂</span>
+        <span class="tab-label">Tout</span>
+      </button>
+      
+      <button 
+        class="tab-item" 
         :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'vinyl' }"
         @click="navToCollection('vinyl')"
       >
@@ -25,7 +34,7 @@
 
       <button 
         class="tab-item" 
-        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'all' }"
+        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'movie' }"
         @click="navToCollection('movie')"
       >
         <span class="tab-icon">🎬</span>
