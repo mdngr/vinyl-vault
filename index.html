@@ -33,6 +33,7 @@
                 <button class="tab-btn" data-type="vinyl">💿 Vinyles</button>
                 <button class="tab-btn" data-type="book">📚 Livres & BDs</button>
                 <button class="tab-btn" data-type="movie">🎬 DVDs / Blu-ray</button>
+                <button class="tab-btn tab-wishlist" data-type="wishlist">✨ Wishlist</button>
             </div>
 
             <!-- Switcher de Vue -->
@@ -43,7 +44,8 @@
         </div>
 
         <div class="search-bar">
-            <input type="text" id="search-input" placeholder="🔍 Filtrer ma bibliothèque...">
+            <input type="text" id="search-input" placeholder="🔍 Filtrer ma bibliothèque ou wishlist...">
+            <button id="btn-lucky-dip" class="btn btn-lucky" title="Tirer une œuvre au sort">🎲</button>
         </div>
     </div>
 
@@ -138,6 +140,11 @@
                 <input type="url" id="edit-cover" placeholder="https://...">
             </div>
 
+            <div class="form-group" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 10px;">
+                <input type="checkbox" id="edit-is-wishlist" style="width: auto; cursor: pointer;">
+                <label for="edit-is-wishlist" style="cursor: pointer; margin: 0;">✨ Conserver dans ma Wishlist (À rechercher)</label>
+            </div>
+
             <button type="submit" class="btn btn-primary" style="margin-top:10px;">Enregistrer les modifications</button>
         </form>
     </div>
@@ -159,6 +166,20 @@
         </div>
 
         <p class="scan-instruction">Place le code-barres EAN / ISBN dans le rectangle.</p>
+    </div>
+</div>
+
+<!-- Modal Lucky Dip -->
+<div id="lucky-modal" class="modal" style="display: none;">
+    <div class="modal-content lucky-content">
+        <div class="modal-header">
+            <h3>🎲 Sélection au hasard</h3>
+            <button id="btn-close-lucky" class="btn-close" type="button">✕</button>
+        </div>
+        <div id="lucky-display" class="lucky-display">
+            <!-- Le résultat apparaîtra ici -->
+        </div>
+        <button id="btn-retry-lucky" class="btn btn-primary" style="margin-top: 15px; width: 100%;">🔀 Retirer au sort</button>
     </div>
 </div>
 

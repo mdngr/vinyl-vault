@@ -164,6 +164,66 @@ h1 {
   box-sizing: border-box;
 }
 
+/* --- Bouton & Modale Lucky Dip --- */
+
+.search-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-lucky {
+  background-color: #8b5cf6;
+  color: white;
+  font-size: 1.2rem;
+  padding: 0 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.15s, background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-lucky:hover {
+  background-color: #7c3aed;
+  transform: scale(1.05);
+}
+
+.lucky-content {
+  max-width: 360px;
+  text-align: center;
+}
+
+.lucky-display {
+  padding: 15px;
+  background: #252525;
+  border-radius: 10px;
+  border: 1px solid #333;
+  margin-top: 10px;
+}
+
+.lucky-card-img {
+  width: 140px;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.lucky-title {
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.lucky-artist {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
 /* --- Panel Admin --- */
 .panel {
   background-color: var(--card-bg);
@@ -554,4 +614,48 @@ select { min-width: 180px; }
   color: #34d399;
   font-weight: 600;
   margin-top: 2px;
+}
+
+/* Onglet Wishlist */
+.tab-btn.tab-wishlist {
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+
+.tab-btn.tab-wishlist:hover, .tab-btn.tab-wishlist.active {
+  background: #f59e0b;
+  color: #121212;
+  border-color: #f59e0b;
+}
+
+/* Badge et carte Wishlist */
+.tag-wishlist {
+  background-color: #f59e0b;
+  color: #121212;
+  font-size: 0.7rem;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.vinyl-card.is-wishlist {
+  border: 1px solid #f59e0b !important;
+}
+
+/* Bouton d'action Wishlist dans la recherche */
+.btn-add-wishlist {
+  background-color: #d97706;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.btn-add-wishlist:hover {
+  background-color: #b45309;
 }

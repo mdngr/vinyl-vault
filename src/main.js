@@ -12,7 +12,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // State local
 let items = [];
 let activeTypeFilter = 'all';
-let currentViewMode = window.innerWidth < 768 ? 'list' : 'masonry'; // Vue Liste par défaut sur mobile
+let currentViewMode = window.innerWidth < 768 ? 'list' : 'masonry';
 
 let html5QrCode = null;
 let currentUser = null;
@@ -57,9 +57,17 @@ const editYearInput = document.getElementById('edit-year');
 const editGenreInput = document.getElementById('edit-genre');
 const editCoverInput = document.getElementById('edit-cover');
 const editTypeSelect = document.getElementById('edit-type');
+const editIsWishlistInput = document.getElementById('edit-is-wishlist');
+
+// Lucky Dip DOM
+const btnLuckyDip = document.getElementById('btn-lucky-dip');
+const luckyModal = document.getElementById('lucky-modal');
+const btnCloseLucky = document.getElementById('btn-close-lucky');
+const btnRetryLucky = document.getElementById('btn-retry-lucky');
+const luckyDisplay = document.getElementById('lucky-display');
 
 // ==========================================
-// 1. GESTION DU SWITCHER DE VUE (GRID / LIST)
+// 1. SWITCHER DE VUE (GRID / LIST)
 // ==========================================
 
 function setViewMode(mode) {
@@ -135,22 +143,21 @@ loginForm.addEventListener('submit', async (e) => {
 });
 
 // ==========================================
-// 3. BASE DE DONNÉES SUPABASE (CRUD)
+// 3. BASE DE DONNÉES (CRUD & CACHE LOCAL)
 // ==========================================
 
-// --- Récupération des données (avec secours LocalStorage pour le vide-grenier) ---
 async function fetchItems() {
-    // 1. Charger immédiatement le cache local s'il existe (affichage instantané sans réseau)
-    const localData = localStorage.getItem('culture_vault_cache');
-    if (localData) {
+    // 1. Restauration immédiate depuis LocalStorage (Mode Hors-Ligne Vide-Grenier)
+    const localCache = localStorage.getItem('culture_vault_cache');
+    if (localCache) {
         try {
-            items = JSON.parse(localData);
+            items = JSON.parse(localCache);
             setViewMode(currentViewMode);
             updateStats();
         } catch (e) { console.warn("Erreur lecture cache local", e); }
     }
 
-    // 2. Tenter la mise à jour depuis Supabase
+    // 2. Synchronisation Supabase
     try {
         const { data, error } = await supabase
             .from('vinyls')
@@ -165,17 +172,16 @@ async function fetchItems() {
                 year: item.year,
                 genre: item.genre,
                 cover: item.cover,
-                type: item.type || 'vinyl'
+                type: item.type || 'vinyl',
+                is_wishlist: !!item.is_wishlist
             }));
 
-            // Sauvegarder dans le stockage physique du téléphone
             localStorage.setItem('culture_vault_cache', JSON.stringify(items));
-
             setViewMode(currentViewMode);
             updateStats();
         }
     } catch (err) {
-        console.warn("Réseau indisponible : utilisation de la version hors-ligne enregistrée.", err);
+        console.warn("Réseau indisponible, utilisation du cache local.", err);
     }
 }
 
@@ -189,28 +195,31 @@ async function addItem(item) {
         year: item.year,
         genre: item.genre,
         cover: item.cover,
-        type: item.type
+        type: item.type,
+        is_wishlist: item.is_wishlist || false
     }]);
 
     if (error) return alert("Erreur Supabase : " + error.message);
 
     items.unshift(item);
+    localStorage.setItem('culture_vault_cache', JSON.stringify(items));
     renderItems(searchInput.value);
     updateStats();
 }
 
 window.deleteItem = async function(id) {
-    if (!currentUser || !confirm("Supprimer cet élément de votre médiathèque ?")) return;
+    if (!currentUser || !confirm("Supprimer cet élément ?")) return;
 
     const { error } = await supabase.from('vinyls').delete().eq('id', id);
-    if (error) return alert("Erreur lors de la suppression : " + error.message);
+    if (error) return alert("Erreur de suppression : " + error.message);
 
     items = items.filter(i => i.id !== id);
+    localStorage.setItem('culture_vault_cache', JSON.stringify(items));
     renderItems(searchInput.value);
     updateStats();
 };
 
-// --- Édition d'un élément ---
+// --- Modale d'édition ---
 
 window.openEditModal = function(id) {
     if (!currentUser) return;
@@ -224,6 +233,7 @@ window.openEditModal = function(id) {
     editGenreInput.value = item.genre || '';
     editCoverInput.value = item.cover || '';
     editTypeSelect.value = item.type || 'vinyl';
+    if (editIsWishlistInput) editIsWishlistInput.checked = !!item.is_wishlist;
 
     editModal.style.display = 'flex';
 };
@@ -243,7 +253,8 @@ editForm.addEventListener('submit', async (e) => {
         year: editYearInput.value.trim(),
         genre: editGenreInput.value.trim(),
         cover: editCoverInput.value.trim(),
-        type: editTypeSelect.value
+        type: editTypeSelect.value,
+        is_wishlist: editIsWishlistInput ? editIsWishlistInput.checked : false
     };
 
     const { error } = await supabase
@@ -251,22 +262,18 @@ editForm.addEventListener('submit', async (e) => {
         .update(updatedData)
         .eq('id', id);
 
-    if (error) {
-        alert("Erreur lors de la modification : " + error.message);
-        return;
-    }
+    if (error) return alert("Erreur de modification : " + error.message);
 
     const index = items.findIndex(i => i.id === id);
-    if (index !== -1) {
-        items[index] = { id, ...updatedData };
-    }
+    if (index !== -1) items[index] = { id, ...updatedData };
 
+    localStorage.setItem('culture_vault_cache', JSON.stringify(items));
     editModal.style.display = 'none';
     renderItems(searchInput.value);
 });
 
 // ==========================================
-// 4. MOTEUR MULTI-APIS (RECHERCHE & EAN/ISBN)
+// 4. MOTEUR APIS (RECHERCHE & PRIX REEL)
 // ==========================================
 
 async function searchAPI(queryOverride = null) {
@@ -289,30 +296,47 @@ async function searchAPI(queryOverride = null) {
     }
 }
 
-// A. Discogs (Vinyles)
+// A. Discogs (Vinyles + Cote d'occasion selon Release ID)
 async function searchDiscogs(query) {
     const isBarcode = /^\d+$/.test(query);
     const param = isBarcode ? `barcode=${encodeURIComponent(query)}` : `q=${encodeURIComponent(query)}`;
+    
     const res = await fetch(`https://api.discogs.com/database/search?${param}&type=release&format=Vinyl&token=${DISCOGS_TOKEN}&per_page=6`);
     const data = await res.json();
 
-    return (data.results || []).map(item => {
-        const parts = item.title.split(' - ');
-        // Estimation basée sur les données ou prix moyen marché vinyle d'occasion
-        const suggestedPrice = item.lowest_price ? `${item.lowest_price} €` : '12 - 20 € (estimé)';
+    if (!data.results || data.results.length === 0) return [];
 
-        return {
-            title: parts[1] || item.title,
-            artist: parts[0] || 'Artiste inconnu',
-            year: item.year || '',
-            genre: item.genre ? item.genre[0] : 'Musique',
-            cover: item.cover_image || item.thumb,
-            suggestedPrice: suggestedPrice
-        };
-    });
+    return await Promise.all(
+        data.results.map(async (item) => {
+            const parts = item.title.split(' - ');
+            let realPrice = null;
+
+            try {
+                const releaseRes = await fetch(`https://api.discogs.com/releases/${item.id}?token=${DISCOGS_TOKEN}`);
+                if (releaseRes.ok) {
+                    const releaseData = await releaseRes.json();
+                    if (releaseData.lowest_price) {
+                        realPrice = `${Math.round(releaseData.lowest_price)} € (Discogs)`;
+                    }
+                }
+            } catch (e) {}
+
+            const countryInfo = item.country ? `[${item.country}]` : '';
+            const yearInfo = item.year ? `(${item.year})` : '';
+
+            return {
+                title: parts[1] || item.title,
+                artist: parts[0] || 'Artiste inconnu',
+                year: item.year || '',
+                genre: item.genre ? item.genre[0] : 'Musique',
+                cover: item.cover_image || item.thumb,
+                suggestedPrice: realPrice || `${countryInfo} ${yearInfo}`.trim() || 'Cote variable'
+            };
+        })
+    );
 }
 
-// B. Livres & BDs (100 % Open Library / Internet Archive - Open Source)
+// B. Livres & BDs (100% Open Library - Libre)
 async function searchBooks(query) {
     const isIsbn = /^\d+$/.test(query);
     const results = [];
@@ -322,7 +346,6 @@ async function searchBooks(query) {
             const res = await fetch(`https://openlibrary.org/isbn/${query}.json`);
             if (res.ok) {
                 const b = await res.json();
-                
                 let authorName = 'Auteur inconnu';
                 if (b.authors && b.authors.length > 0) {
                     try {
@@ -334,7 +357,6 @@ async function searchBooks(query) {
                     } catch (e) {}
                 }
 
-                // Estimation selon le nombre de pages (BD / Roman grand format vs Poche)
                 const pages = b.number_of_pages || 0;
                 let priceEst = '3 - 5 € (Poche)';
                 if (pages > 0 && pages < 80) priceEst = '8 - 14 € (BD / Comic)';
@@ -374,7 +396,7 @@ async function searchBooks(query) {
     return results;
 }
 
-// C. DVDs & Blu-ray (TMDB ou OMDb/iTunes Fallback)
+// C. DVDs & Blu-ray
 async function searchMovies(query) {
     if (!TMDB_API_KEY) {
         const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=movie&limit=6`);
@@ -384,7 +406,8 @@ async function searchMovies(query) {
             artist: m.artistName || 'Cinéma',
             year: m.releaseDate ? m.releaseDate.substring(0, 4) : '',
             genre: m.primaryGenreName || 'Film',
-            cover: m.artworkUrl100 ? m.artworkUrl100.replace('100x100bb', '400x400bb') : ''
+            cover: m.artworkUrl100 ? m.artworkUrl100.replace('100x100bb', '400x400bb') : '',
+            suggestedPrice: '2 - 5 € (Occasion)'
         }));
     }
 
@@ -395,9 +418,12 @@ async function searchMovies(query) {
         artist: 'Film',
         year: m.release_date ? m.release_date.substring(0, 4) : '',
         genre: 'DVD / Blu-ray',
-        cover: m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : ''
+        cover: m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : '',
+        suggestedPrice: '2 - 5 € (Occasion)'
     }));
 }
+
+// --- Affichage Résultats & Doublons ---
 
 function displayResults(results, type) {
     resultsContainer.innerHTML = '';
@@ -407,52 +433,63 @@ function displayResults(results, type) {
     }
 
     results.forEach(item => {
-        // Détection de doublon (même titre et même artiste/auteur pour la même catégorie)
-        const isDuplicate = items.some(existingItem => 
-            existingItem.type === type &&
-            existingItem.title.toLowerCase().trim() === item.title.toLowerCase().trim() &&
-            existingItem.artist.toLowerCase().trim() === item.artist.toLowerCase().trim()
+        const isDuplicate = items.some(existing => 
+            existing.type === type &&
+            !existing.is_wishlist &&
+            existing.title.toLowerCase().trim() === item.title.toLowerCase().trim() &&
+            existing.artist.toLowerCase().trim() === item.artist.toLowerCase().trim()
         );
 
         const div = document.createElement('div');
         div.className = `result-item ${isDuplicate ? 'is-duplicate' : ''}`;
         
-        const duplicateBadgeHTML = isDuplicate 
-            ? '<span class="badge-duplicate">⚠️ Déjà dans la collection</span>' 
-            : '';
+        const duplicateBadge = isDuplicate ? '<span class="badge-duplicate">⚠️ Déjà dans la collection</span>' : '';
 
         div.innerHTML = `
             <img src="${item.cover || 'https://via.placeholder.com/50'}" alt="">
             <div class="result-info">
-                <div class="result-title">${item.title} ${duplicateBadgeHTML}</div>
+                <div class="result-title">${item.title} ${duplicateBadge}</div>
                 <div class="result-sub">${item.artist} ${item.year ? `(${item.year})` : ''}</div>
                 ${item.suggestedPrice ? `<div class="price-tag">🏷️ Cote approx. : ${item.suggestedPrice}</div>` : ''}
+                <div style="display:flex; gap:6px; margin-top:6px;">
+                    <button class="btn-add-collection btn btn-primary" style="padding:4px 8px; font-size:0.75rem;">+ Collection</button>
+                    <button class="btn-add-wishlist">+ ✨ Wishlist</button>
+                </div>
             </div>
         `;
 
-        div.onclick = () => {
-            // Alerte si l'élément est déjà présent
-            if (isDuplicate) {
-                const confirmAdd = confirm(`" ${item.title} " est déjà dans ta bibliothèque.\n\nSouhaites-tu tout de même l'ajouter en double ?`);
-                if (!confirmAdd) return;
-            }
+        div.querySelector('.btn-add-collection').onclick = (e) => {
+            e.stopPropagation();
+            saveItemFromSearch(item, type, false, isDuplicate);
+        };
 
-            addItem({
-                id: Date.now(),
-                title: item.title,
-                artist: item.artist,
-                year: item.year,
-                genre: item.genre,
-                cover: item.cover,
-                type: type
-            });
-
-            resultsContainer.style.display = 'none';
-            apiSearchInput.value = '';
+        div.querySelector('.btn-add-wishlist').onclick = (e) => {
+            e.stopPropagation();
+            saveItemFromSearch(item, type, true, false);
         };
 
         resultsContainer.appendChild(div);
     });
+}
+
+function saveItemFromSearch(item, type, isWishlist, isDuplicate) {
+    if (isDuplicate && !isWishlist) {
+        if (!confirm(`"${item.title}" est déjà dans ta bibliothèque.\n\nSouhaites-tu tout de même l'ajouter en double ?`)) return;
+    }
+
+    addItem({
+        id: Date.now(),
+        title: item.title,
+        artist: item.artist,
+        year: item.year,
+        genre: item.genre,
+        cover: item.cover,
+        type: type,
+        is_wishlist: isWishlist
+    });
+
+    resultsContainer.style.display = 'none';
+    apiSearchInput.value = '';
 }
 
 // ==========================================
@@ -478,9 +515,7 @@ async function startScanner() {
         qrbox: { width: 280, height: 140 },
         videoConstraints: {
             facingMode: { exact: "environment" },
-            focusMode: "continuous",
-            width: { min: 1280, ideal: 1920 },
-            height: { min: 720, ideal: 1080 }
+            focusMode: "continuous"
         }
     };
 
@@ -532,19 +567,15 @@ function initHardwareZoom() {
             zoomSlider.step = capabilities.zoom.step || 0.1;
             zoomSlider.value = capabilities.zoom.min || 1;
             zoomValue.textContent = `${zoomSlider.value}x`;
-
             zoomContainer.style.display = 'flex';
 
             zoomSlider.oninput = (e) => {
                 const val = parseFloat(e.target.value);
                 zoomValue.textContent = `${val.toFixed(1)}x`;
-                videoTrack.applyConstraints({ advanced: [{ zoom: val }] })
-                    .catch(err => console.warn("Zoom error:", err));
+                videoTrack.applyConstraints({ advanced: [{ zoom: val }] });
             };
         }
-    } catch (e) {
-        console.warn("Le zoom matériel n'est pas supporté par ce système.", e);
-    }
+    } catch (e) {}
 }
 
 async function stopScanner() {
@@ -559,67 +590,125 @@ async function stopScanner() {
 }
 
 // ==========================================
-// 6. RENDU GRAPHIQUE ET FILTRES
+// 6. RENDU GRAPHIQUE ET FILTRES SANS LAG
 // ==========================================
 
 function renderItems(filterText = '') {
-    const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
-    const typeIcons = { vinyl: '💿 Vinyle', book: '📚 Livre / BD', movie: '🎬 DVD' };
+    grid.innerHTML = '';
     const query = filterText.toLowerCase().trim();
 
-    // 1. Récupérer tous les éléments de carte déjà présents dans le DOM
-    const existingCards = Array.from(grid.children);
-    
-    // Si la liste a changé (ajout/suppression), on reconstruit
-    if (existingCards.length !== items.length) {
-        grid.innerHTML = '';
-        items.forEach(item => {
-            const card = document.createElement('div');
-            card.className = 'vinyl-card';
-            card.dataset.id = item.id;
-            card.dataset.type = item.type;
-            card.dataset.search = `${item.title} ${item.artist}`.toLowerCase();
+    const filtered = items.filter(i => {
+        let matchesType = false;
+        if (activeTypeFilter === 'wishlist') {
+            matchesType = i.is_wishlist === true;
+        } else {
+            const isCategoryMatch = (activeTypeFilter === 'all' || i.type === activeTypeFilter);
+            matchesType = isCategoryMatch && !i.is_wishlist;
+        }
 
-            const actionsHTML = currentUser ? `
-                <div class="card-actions">
-                    <button class="btn-card-action btn-edit-card" onclick="openEditModal(${item.id})" title="Modifier">✏️</button>
-                    <button class="btn-card-action btn-delete-card" onclick="deleteItem(${item.id})" title="Supprimer">✕</button>
-                </div>
-            ` : '';
+        const matchesText = !query || 
+            i.title.toLowerCase().includes(query) ||
+            i.artist.toLowerCase().includes(query);
 
-            card.innerHTML = `
-                ${actionsHTML}
-                <img class="cover-img" src="${item.cover || defaultCover}" alt="${item.title}" loading="lazy" onerror="this.src='${defaultCover}'">
-                <div class="card-body">
-                    <span class="type-tag">${typeIcons[item.type] || 'Œuvre'}</span>
-                    <div class="album-title">${item.title}</div>
-                    <div class="artist-name">${item.artist} ${item.year ? `(${item.year})` : ''}</div>
-                </div>
-            `;
-            grid.appendChild(card);
-        });
+        return matchesType && matchesText;
+    });
+
+    if (filtered.length === 0) {
+        const msg = activeTypeFilter === 'wishlist' 
+            ? 'Aucun élément dans votre Wishlist.' 
+            : 'Aucun élément trouvé dans cette catégorie.';
+        grid.innerHTML = `<p style="color:var(--text-secondary); grid-column:1/-1;">${msg}</p>`;
+        return;
     }
 
-    // 2. Filtrer en modifiant simplement la propriété display (pas de rechargement d'image !)
-    let visibleCount = 0;
-    Array.from(grid.children).forEach(card => {
-        const matchesType = activeTypeFilter === 'all' || card.dataset.type === activeTypeFilter;
-        const matchesText = !query || card.dataset.search.includes(query);
+    filtered.forEach(item => {
+        const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
+        const card = document.createElement('div');
+        card.className = `vinyl-card ${item.is_wishlist ? 'is-wishlist' : ''}`;
 
-        if (matchesType && matchesText) {
-            card.style.display = '';
-            visibleCount++;
-        } else {
-            card.style.display = 'none';
-        }
+        const actionsHTML = currentUser ? `
+            <div class="card-actions">
+                <button class="btn-card-action btn-edit-card" onclick="openEditModal(${item.id})" title="Modifier">✏️</button>
+                <button class="btn-card-action btn-delete-card" onclick="deleteItem(${item.id})" title="Supprimer">✕</button>
+            </div>
+        ` : '';
+
+        const typeIcons = { vinyl: '💿 Vinyle', book: '📚 Livre / BD', movie: '🎬 DVD' };
+        const badgeHTML = item.is_wishlist 
+            ? `<span class="tag-wishlist">✨ Wishlist</span>` 
+            : `<span class="type-tag">${typeIcons[item.type] || 'Œuvre'}</span>`;
+
+        card.innerHTML = `
+            ${actionsHTML}
+            <img class="cover-img" src="${item.cover || defaultCover}" alt="${item.title}" loading="lazy" onerror="this.src='${defaultCover}'">
+            <div class="card-body">
+                ${badgeHTML}
+                <div class="album-title">${item.title}</div>
+                <div class="artist-name">${item.artist} ${item.year ? `(${item.year})` : ''}</div>
+            </div>
+        `;
+        grid.appendChild(card);
     });
 }
 
 function updateStats() {
-    stats.textContent = `${items.length} élément(s)`;
+    const totalCollection = items.filter(i => !i.is_wishlist).length;
+    const totalWishlist = items.filter(i => i.is_wishlist).length;
+    stats.textContent = `${totalCollection} élément(s) • ${totalWishlist} wishlist`;
 }
 
-// Filtres catégories (Tous / Vinyles / Livres / Films)
+// ==========================================
+// 7. LUCKY DIP (TIRAGE AU SORT)
+// ==========================================
+
+function runLuckyDip() {
+    const pool = items.filter(i => {
+        if (activeTypeFilter === 'wishlist') return i.is_wishlist;
+        if (activeTypeFilter === 'all') return !i.is_wishlist;
+        return i.type === activeTypeFilter && !i.is_wishlist;
+    });
+
+    if (pool.length === 0) {
+        alert("Aucun élément disponible dans cette catégorie pour le tirage au sort !");
+        return;
+    }
+
+    luckyModal.style.display = 'flex';
+    luckyDisplay.innerHTML = '<p style="color:var(--text-secondary)">Mélange en cours... 🎲</p>';
+
+    let counter = 0;
+    const maxSteps = 12;
+    const interval = setInterval(() => {
+        const randomItem = pool[Math.floor(Math.random() * pool.length)];
+        renderLuckyCard(randomItem, true);
+        counter++;
+
+        if (counter >= maxSteps) {
+            clearInterval(interval);
+            const finalChoice = pool[Math.floor(Math.random() * pool.length)];
+            renderLuckyCard(finalChoice, false);
+        }
+    }, 100);
+}
+
+function renderLuckyCard(item, isRolling) {
+    const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
+    const typeIcons = { vinyl: '💿 Vinyle', book: '📚 Livre / BD', movie: '🎬 DVD' };
+    
+    luckyDisplay.innerHTML = `
+        <img class="lucky-card-img" src="${item.cover || defaultCover}" alt="${item.title}" onerror="this.src='${defaultCover}'">
+        <span class="type-tag" style="display:block; margin-bottom:4px;">${typeIcons[item.type] || 'Œuvre'}</span>
+        <div class="lucky-title">${item.title}</div>
+        <div class="lucky-artist">${item.artist} ${item.year ? `(${item.year})` : ''}</div>
+        ${!isRolling ? '<p style="color:#10b981; font-weight:bold; margin-top:10px; font-size:0.85rem;">🎉 Voilà ton choix pour aujourd\'hui !</p>' : ''}
+    `;
+}
+
+// ==========================================
+// 8. ÉVÉNEMENTS ET INITIALISATION
+// ==========================================
+
+// Filtres catégories
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -635,14 +724,13 @@ btnScan.addEventListener('click', startScanner);
 btnCloseScanner.addEventListener('click', stopScanner);
 searchInput.addEventListener('input', (e) => renderItems(e.target.value));
 
+// Événements Lucky Dip
+if (btnLuckyDip) btnLuckyDip.addEventListener('click', runLuckyDip);
+if (btnRetryLucky) btnRetryLucky.addEventListener('click', runLuckyDip);
+if (btnCloseLucky) btnCloseLucky.addEventListener('click', () => {
+    luckyModal.style.display = 'none';
+});
+
 // Initialisation au chargement
 checkUserSession();
 fetchItems();
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((reg) => console.log('🏛️ Service Worker actif (Mode hors-ligne prêt) !', reg.scope))
-      .catch((err) => console.warn('Échec enregistrement SW :', err));
-  });
-}
