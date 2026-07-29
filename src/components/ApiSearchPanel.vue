@@ -25,12 +25,6 @@
       </button>
     </div>
 
-    <!-- Modale du Scanner -->
-    <ScannerModal 
-      :isOpen="isScannerOpen" 
-      @close="isScannerOpen = false" 
-      @scan="handleScanResult" 
-    />
     <!-- Formulaire de recherche repensé -->
     <form @submit.prevent="searchApi" class="search-form">
       <div class="search-input-wrapper">
