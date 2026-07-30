@@ -176,63 +176,6 @@
       />
     </template>
 
-    <!-- 📱 BARRE DE NAVIGATION EN BAS POUR MOBILE -->
-    <nav v-if="isMobile" class="mobile-tab-bar">
-      <button 
-        class="tab-item" 
-        :class="{ active: collectionStore.activeTypeFilter === 'all' && !isSearchOpen && !isLuckyPickOpen }"
-        @click="selectTab('all')"
-      >
-        <span class="tab-icon">📁</span>
-        <span>Tout</span>
-      </button>
-
-      <button 
-        class="tab-item" 
-        :class="{ active: collectionStore.activeTypeFilter === 'vinyl' && !isSearchOpen && !isLuckyPickOpen }"
-        @click="selectTab('vinyl')"
-      >
-        <span class="tab-icon">🎵</span>
-        <span>Musique</span>
-      </button>
-
-      <button 
-        class="tab-item" 
-        :class="{ active: collectionStore.activeTypeFilter === 'book' && !isSearchOpen && !isLuckyPickOpen }"
-        @click="selectTab('book')"
-      >
-        <span class="tab-icon">📚</span>
-        <span>Livres</span>
-      </button>
-
-      <button 
-        class="tab-item" 
-        :class="{ active: collectionStore.activeTypeFilter === 'movie' && !isSearchOpen && !isLuckyPickOpen }"
-        @click="selectTab('movie')"
-      >
-        <span class="tab-icon">🎬</span>
-        <span>Films</span>
-      </button>
-
-      <button 
-        class="tab-item tab-action-lucky" 
-        :class="{ active: isLuckyPickOpen }"
-        @click="openMobileLuckyPick"
-      >
-        <span class="tab-icon">🎲</span>
-        <span>Lucky Pick</span>
-      </button>
-
-      <button 
-        class="tab-item tab-action-add" 
-        :class="{ active: isSearchOpen }"
-        @click="openMobileSearch"
-      >
-        <span class="tab-icon">➕</span>
-        <span>Ajouter</span>
-      </button>
-    </nav>
-
   </div>
 </template>
 
@@ -579,31 +522,6 @@ async function deleteItem(id) {
 .items-container.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
 .items-container.list-view { display: flex; flex-direction: column; gap: 8px; }
 .loading-state, .empty-state { text-align: center; padding: 40px; color: #a1a1aa; }
-
-/* 📱 BARRE DE NAVIGATION FIXE MOBILE (TAB BAR) */
-.mobile-tab-bar {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .mobile-tab-bar {
-    display: flex !important;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: calc(65px + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
-    background: rgba(24, 24, 27, 0.98);
-    backdrop-filter: blur(12px);
-    border-top: 1px solid #27272a;
-    justify-content: space-around;
-    align-items: center;
-    z-index: 2000;
-    padding-left: 4px;
-    padding-right: 4px;
-  }
-}
 
 .tab-item {
   background: transparent;
