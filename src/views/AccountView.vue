@@ -17,6 +17,9 @@
           <h3>{{ userEmail }}</h3>
           <p class="user-id">ID : <code>{{ userId }}</code></p>
         </div>
+        <button class="btn-action btn-secondary" @click="copyShareLink">
+          🔗 Copier le lien de ma collection publique
+        </button>
       </div>
 
       <!-- CARTE STATISTIQUES GLOBALES -->
@@ -158,6 +161,13 @@ async function handleLogout() {
     await authStore.logout();
     router.push('/');
   }
+}
+
+function copyShareLink() {
+  if (!authStore.user?.id) return;
+  const shareUrl = `${window.location.origin}/share/${authStore.user.id}`;
+  navigator.clipboard.writeText(shareUrl);
+  alert("Lien de votre collection copié dans le presse-papier !");
 }
 </script>
 

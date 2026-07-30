@@ -21,7 +21,7 @@
     </div>
 
     <!-- Actions de carte -->
-    <div class="card-actions">
+    <div v-if="!isReadonly" class="card-actions">
       <button class="btn-action" @click="openEditModal" title="Modifier">✏️</button>
       <button class="btn-action btn-delete" @click="$emit('delete', item.id)" title="Supprimer">🗑️</button>
     </div>
@@ -101,6 +101,10 @@ import { FORMATS_BY_TYPE, getFormatLabel } from '../constants/formats';
 const props = defineProps({
   item: { type: Object, required: true },
   isListView: { type: Boolean, default: false }
+  isReadonly: {
+    type: Boolean,
+    default: false
+  }
 });
 
 defineEmits(['delete']);

@@ -3,6 +3,7 @@ import LandingView from '../views/LandingView.vue';
 import CollectionView from '../views/CollectionView.vue';
 import SearchView from '../views/SearchView.vue';
 import AccountView from '../views/AccountView.vue';
+import PublicCollectionPage from '../views/PublicCollectionPage.vue'
 import { supabase } from '../services/supabase';
 
 const router = createRouter({
@@ -11,7 +12,8 @@ const router = createRouter({
     { path: '/', name: 'landing', component: LandingView },
     { path: '/collection', name: 'collection', component: CollectionView, meta: { requiresAuth: true }},
     { path: '/search', name: 'search', component: SearchView, meta: { requiresAuth: true }},
-    { path: '/account', name: 'account', component: AccountView, meta: { requiresAuth: true }} // 👈 Route ajoutée
+    { path: '/account', name: 'account', component: AccountView, meta: { requiresAuth: true }},
+    { path: '/share/:userId', name: 'PublicCollection', component: PublicCollectionPage }
   ]
 });
 
