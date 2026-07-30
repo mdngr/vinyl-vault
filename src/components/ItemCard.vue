@@ -18,12 +18,26 @@
         <span class="badge badge-type">{{ typeLabel }}</span>
         <span v-if="formatLabel" class="badge badge-format">{{ formatLabel }}</span>
       </div>
+
+      <!-- 🛒 BOUTON D'AFFILIATION (Wishlist uniquement) -->
+      <div v-if="item.is_wishlist" class="affiliate-wrapper">
+        <a 
+          :href="affiliateUrl" 
+          target="_blank" 
+          rel="noopener sponsored" 
+          class="btn-affiliate"
+          title="Trouver au meilleur prix"
+          @click.stop
+        >
+          🛒 Acheter ({{ merchantName }})
+        </a>
+      </div>
     </div>
 
     <!-- Actions de carte -->
     <div v-if="!isReadonly" class="card-actions">
-      <button class="btn-action" @click="openEditModal" title="Modifier">✏️</button>
-      <button class="btn-action btn-delete" @click="$emit('delete', item.id)" title="Supprimer">🗑️</button>
+      <button class="btn-action" @click.stop="openEditModal" title="Modifier">✏️</button>
+      <button class="btn-action btn-delete" @click.stop="$emit('delete', item.id)" title="Supprimer">🗑️</button>
     </div>
 
     <!-- Modale d'Édition -->
@@ -134,6 +148,28 @@ const formatLabel = computed(() => {
 // Formats disponibles pour le formulaire d'édition
 const availableFormats = computed(() => {
   return FORMATS_BY_TYPE[form.value.type] || [];
+});
+
+// Nom du marchand éthique selon le type
+const merchantName = computed(() => {
+  if (props.item.type === 'book') return 'Place des Libraires';
+  if (props.item.type === 'vinyl') return 'Bandcamp / Discogs';
+  return 'Éditeurs Indépendants';
+});
+
+// URL vers des alternatives éthiques & passionnées
+const affiliateUrl = computed(() => {
+  const query = encodeURIComponent(`${props.item.title || ''} ${props.item.artist || ''}`);
+
+  if (props.item.type === 'book') {
+    return `https://www.place-des-libraires.fr/listelivres.php?mots=${query}`;
+  } else if (props.item.type === 'vinyl') {
+    // Redirection vers la recherche Bandcamp
+    return `https://bandcamp.com/search?q=${query}`;
+  }
+
+  // Pour le cinéma / supports physiques rares (ex: recherche Discogs ou boutique spécialisée)
+  return `https://www.discogs.com/fr/search/?q=${query}`;
 });
 
 // Réinitialiser le format si l'utilisateur change la catégorie dans la modale
@@ -248,7 +284,6 @@ async function saveEdit() {
   white-space: nowrap;
 }
 
-/* Style uniforme pour le Type et le Format */
 .badge-type {
   background: rgba(59, 130, 246, 0.15);
   color: #60a5fa;
@@ -259,6 +294,32 @@ async function saveEdit() {
   background: rgba(255, 255, 255, 0.08);
   color: #e4e4e7;
   border: 1px solid #3f3f46;
+}
+
+/* 🛒 STYLES BOUTON AFFILIATION WISHLIST */
+.affiliate-wrapper {
+  margin-top: 6px;
+}
+
+.btn-affiliate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.btn-affiliate:hover {
+  background: #f59e0b;
+  color: #000;
 }
 
 .card-actions {

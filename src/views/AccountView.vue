@@ -8,17 +8,24 @@
     </header>
 
     <div class="account-grid">
-      <!-- CARTE PROFIL (Mise en avant sur mobile) -->
+      <!-- CARTE PROFIL -->
       <div class="account-card profile-card">
-        <div class="user-avatar">
-          {{ userEmail ? userEmail.charAt(0).toUpperCase() : '👤' }}
+        <div class="profile-main">
+          <div class="user-avatar">
+            {{ userEmail ? userEmail.charAt(0).toUpperCase() : '👤' }}
+          </div>
+          
+          <div class="user-info">
+            <h3>{{ userEmail }}</h3>
+            <p class="user-id" :title="userId">
+              ID : <code>{{ truncatedUserId }}</code>
+            </p>
+          </div>
         </div>
-        <div class="user-info">
-          <h3>{{ userEmail }}</h3>
-          <p class="user-id">ID : <code>{{ userId }}</code></p>
-        </div>
-        <button class="btn-action btn-secondary" @click="copyShareLink">
-          🔗 Copier le lien de ma collection publique
+
+        <button class="btn-share-link" @click="copyShareLink">
+          <span class="share-icon">🔗</span>
+          <span>Copier le lien de ma collection</span>
         </button>
       </div>
 
@@ -41,6 +48,7 @@
         </div>
       </div>
 
+      <!-- CARTE STATISTIQUES PAR TYPE -->
       <div class="account-card stats-card">
         <h4>🏷️ Répartition par type</h4>
         <div class="stats-types-list">
@@ -73,6 +81,27 @@
         </div>
       </div>
 
+      <!-- 📥 CARTE IMPORTS & EXPORTS -->
+      <div class="account-card actions-card">
+        <h4>📥 Données & Sauvegardes</h4>
+        
+        <div class="tools-list">
+          <button class="btn-action btn-secondary" @click="isImportModalOpen = true">
+            <span class="btn-icon">🎵</span>
+            <span>Importer ma Wantlist Discogs (.csv)</span>
+          </button>
+
+          <button 
+            class="btn-action btn-secondary" 
+            @click="exportCollection" 
+            :disabled="collectionStore.items.length === 0"
+          >
+            <span class="btn-icon">📦</span>
+            <span>Exporter ma médiathèque (CSV)</span>
+          </button>
+        </div>
+      </div>
+
       <!-- CARTE ACTIONS -->
       <div class="account-card actions-card">
         <h4>⚙️ Sécurité & Session</h4>
@@ -86,6 +115,13 @@
         </button>
       </div>
     </div>
+
+    <!-- 🎁 MODALE IMPORT DISCOGS -->
+    <DiscogsImportModal 
+      v-if="isImportModalOpen" 
+      @close="isImportModalOpen = false"
+      @imported="handleImportSuccess"
+    />
   </div>
 </template>
 
@@ -95,15 +131,22 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useCollectionStore } from '../stores/collection';
 import { supabase } from '../services/supabase';
+import DiscogsImportModal from '../components/DiscogsImportModal.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const collectionStore = useCollectionStore();
 
 const sendingEmail = ref(false);
+const isImportModalOpen = ref(false);
 
 const userEmail = computed(() => authStore.user?.email || 'Utilisateur');
 const userId = computed(() => authStore.user?.id || 'Inconnu');
+
+const truncatedUserId = computed(() => {
+  if (!userId.value || userId.value === 'Inconnu') return 'Inconnu';
+  return `${userId.value.slice(0, 4)}...${userId.value.slice(-4)}`;
+});
 
 // Stats globales
 const collectionItemsCount = computed(() => {
@@ -167,7 +210,38 @@ function copyShareLink() {
   if (!authStore.user?.id) return;
   const shareUrl = `${window.location.origin}/share/${authStore.user.id}`;
   navigator.clipboard.writeText(shareUrl);
-  alert("Lien de votre collection copié dans le presse-papier !");
+  alert("Lien de votre collection copié !");
+}
+
+// Rafraîchir le store après l'import CSV
+async function handleImportSuccess() {
+  await collectionStore.fetchItems();
+}
+
+// Exportation de la médiathèque au format CSV
+function exportCollection() {
+  if (collectionStore.items.length === 0) return;
+
+  const headers = ['Title', 'Artist', 'Year', 'Type', 'Format', 'Wishlist'];
+  const rows = collectionStore.items.map(item => [
+    `"${(item.title || '').replace(/"/g, '""')}"`,
+    `"${(item.artist || '').replace(/"/g, '""')}"`,
+    item.year || '',
+    item.type || '',
+    item.format || '',
+    item.is_wishlist ? 'true' : 'false'
+  ]);
+
+  const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' 
+    + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', `culture_vault_export_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 </script>
 
@@ -228,16 +302,24 @@ function copyShareLink() {
 
 /* CARTE PROFIL */
 .profile-card {
-  transition: all 0.3s ease;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.profile-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .user-avatar {
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   background: #3b82f6;
   color: #fff;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -253,7 +335,7 @@ function copyShareLink() {
 .user-info h3 {
   margin: 0;
   color: #fff;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -267,9 +349,40 @@ function copyShareLink() {
 
 .user-id code {
   background: #09090b;
+  color: #a1a1aa;
   padding: 2px 6px;
   border-radius: 4px;
   font-family: monospace;
+}
+
+.btn-share-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-share-link:hover {
+  background: #3f3f46;
+  border-color: #52525b;
+}
+
+.btn-share-link:active {
+  transform: scale(0.98);
+}
+
+.share-icon {
+  font-size: 0.95rem;
 }
 
 /* CARTES STATS ET ACTIONS */
@@ -305,16 +418,6 @@ function copyShareLink() {
   gap: 4px;
 }
 
-.type-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.type-icon {
-  font-size: 1rem;
-}
-
 .stat-value {
   font-size: 1.4rem;
   font-weight: 700;
@@ -328,127 +431,8 @@ function copyShareLink() {
   text-transform: uppercase;
 }
 
-.sub-stat {
-  font-size: 0.7rem;
-  color: #71717a;
-}
-
-/* BOUTONS ACTIONS */
-.btn-action {
-  width: 100%;
-  padding: 14px;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.2s ease;
-  margin-bottom: 12px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-action:last-child {
-  margin-bottom: 0;
-}
-
-.btn-secondary {
-  background: #27272a;
-  color: #fff;
-  border-color: #3f3f46;
-}
-
-.btn-secondary:hover { background: #3f3f46; }
-
-.btn-danger {
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-.btn-danger:hover {
-  background: #ef4444;
-  color: #fff;
-}
-
-.desktop-only { display: inline-flex; }
-
-/* 📱 AJUSTEMENTS SMARTPHONE */
-@media (max-width: 768px) {
-  .desktop-only { display: none !important; }
-
-  .account-page {
-    padding: 16px;
-    padding-top: max(12px, env(safe-area-inset-top));
-    padding-left: 12px;
-    padding-right: 12px;
-    padding-bottom: calc(75px + env(safe-area-inset-bottom));
-  }
-
-  .page-header h2 {
-    text-align: center;
-    font-size: 1.8rem;
-    margin-bottom: 8px;
-  }
-
-  .profile-card {
-    flex-direction: column;
-    text-align: center;
-    padding: 30px 20px;
-    gap: 16px;
-  }
-
-  .user-avatar {
-    width: 80px;
-    height: 80px;
-    font-size: 2.2rem;
-  }
-
-  .user-info h3 {
-    font-size: 1.4rem;
-  }
-
-  .user-id {
-    font-size: 0.8rem;
-  }
-
-  .stats-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .stat-item {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    padding: 14px 18px;
-    text-align: left;
-  }
-
-  .type-item {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .stat-value {
-    font-size: 1.2rem;
-  }
-
-  .stat-label {
-    font-size: 0.85rem;
-  }
-
-  .btn-action {
-    padding: 16px;
-    font-size: 1rem;
-  }
-}
-
-stats-types-list {
+/* REPARTITION PAR TYPE */
+.stats-types-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -460,8 +444,6 @@ stats-types-list {
   border: 1px solid #27272a;
   border-radius: 12px;
   padding: 14px 18px;
-
-  /* Grille à 3 colonnes pour alignement parfait */
   display: grid;
   grid-template-columns: 140px 1fr 120px;
   align-items: center;
@@ -485,17 +467,120 @@ stats-types-list {
   font-size: 1.4rem;
   font-weight: 700;
   color: #3b82f6;
-  text-align: center; /* Aligne les chiffres exactement au centre de la colonne du milieu */
+  text-align: center;
 }
 
 .type-row .sub-stat {
   font-size: 0.75rem;
   color: #71717a;
-  text-align: right; /* Aligne le sous-texte sur le bord droit */
+  text-align: right;
 }
 
-/* Ajustement mobile */
+/* LISTE DES OUTILS DONNÉES */
+.tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.btn-icon {
+  font-size: 1.1rem;
+}
+
+/* BOUTONS ACTIONS */
+.btn-action {
+  width: 100%;
+  padding: 14px;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #27272a;
+  color: #fff;
+  border-color: #3f3f46;
+}
+
+.btn-secondary:hover:not(:disabled) { background: #3f3f46; }
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+.desktop-only { display: inline-flex; }
+
+/* 📱 AJUSTEMENTS SMARTPHONE */
 @media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+
+  .account-page {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-bottom: calc(75px + env(safe-area-inset-bottom));
+  }
+
+  .page-header h2 {
+    text-align: center;
+    font-size: 1.8rem;
+    margin-bottom: 8px;
+  }
+
+  .profile-card {
+    text-align: center;
+    padding: 24px 16px;
+  }
+
+  .profile-main {
+    flex-direction: column;
+    text-align: center;
+    gap: 10px;
+  }
+
+  .user-avatar {
+    width: 64px;
+    height: 64px;
+    font-size: 1.8rem;
+  }
+
+  .user-info h3 {
+    font-size: 1.25rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .stat-item {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    text-align: left;
+  }
+
   .type-row {
     grid-template-columns: 110px 1fr 100px;
     padding: 12px 14px;
@@ -503,6 +588,11 @@ stats-types-list {
   
   .type-label {
     font-size: 0.75rem;
+  }
+
+  .btn-action {
+    padding: 16px;
+    font-size: 1rem;
   }
 }
 </style>

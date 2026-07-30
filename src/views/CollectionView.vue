@@ -41,7 +41,7 @@
             {{ isSearchOpen ? '✕ Fermer' : '➕ Ajouter' }}
           </button>
 
-          <button class="btn btn-primary" @click="$router.push('/account')">
+          <button class="btn btn-secondary" @click="$router.push('/account')">
             👤 Mon compte
           </button>
         </div>
