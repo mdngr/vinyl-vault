@@ -371,9 +371,12 @@ async function handleLogout() {
 
   .account-page {
     padding: 16px;
-    padding-bottom: 100px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-bottom: calc(75px + env(safe-area-inset-bottom));
   }
-  
+
   .page-header h2 {
     text-align: center;
     font-size: 1.8rem;
@@ -447,7 +450,7 @@ stats-types-list {
   border: 1px solid #27272a;
   border-radius: 12px;
   padding: 14px 18px;
-  
+
   /* Grille à 3 colonnes pour alignement parfait */
   display: grid;
   grid-template-columns: 140px 1fr 120px;

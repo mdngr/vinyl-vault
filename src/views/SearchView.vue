@@ -79,8 +79,10 @@ import ApiSearchPanel from '../components/ApiSearchPanel.vue';
   }
 
   .search-page {
-    padding: 16px;
-    padding-bottom: 100px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-bottom: calc(75px + env(safe-area-inset-bottom));
   }
 
   .page-header {
