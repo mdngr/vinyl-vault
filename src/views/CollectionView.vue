@@ -344,13 +344,11 @@ async function deleteItem(id) {
   top: 0;
   left: 0;
   right: 0;
-  bottom: 65px;
+  /* Prendre en compte les encoches haut et bas */
+  padding-top: calc(16px + env(safe-area-inset-top));
+  bottom: calc(65px + env(safe-area-inset-bottom));
   background: #09090b;
   z-index: 1500;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 16px;
 }
 
 .mobile-view-header {

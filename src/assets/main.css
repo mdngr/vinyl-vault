@@ -43,6 +43,18 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Gestion des marges de sécurité PWA iOS */
+body, #app {
+  /* Ajoute la marge uniquement si nécessaire (Notch / Dynamic Island & barre du bas) */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  
+  /* S'assure que le fond noir/sombre couvre tout l'écran, même sous les barres */
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #09090b;
+}
+
 /* ==========================================================================
    2. TYPOGRAPHIE & BOUTONS
    ========================================================================== */

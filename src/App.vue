@@ -102,19 +102,21 @@ function navToCollection(filterType) {
 /* Visibilité forcée en version Mobile (<= 768px) */
 @media (max-width: 768px) {
   .mobile-tab-bar {
-    display: flex !important;
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
-    height: 65px;
+    /* On ajoute la marge de sécurité en bas de la barre */
+    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(65px + env(safe-area-inset-bottom));
+    
     background: rgba(24, 24, 27, 0.98);
     backdrop-filter: blur(12px);
     border-top: 1px solid #27272a;
+    display: flex !important;
     justify-content: space-around;
     align-items: center;
     z-index: 2000;
-    padding: 0 4px;
   }
 
   .tab-item {
