@@ -66,7 +66,7 @@ const activeFilter = ref('all');
 onMounted(async () => {
   try {
     const { data, error } = await supabase
-      .from('items')
+      .from('vinyls')
       .select('*')
       .eq('user_id', userId)
       .eq('is_wishlist', false) // Exclut la wishlist par défaut
