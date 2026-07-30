@@ -6,12 +6,17 @@
         <p class="stats-text">{{ items.length }} œuvre(s)</p>
       </div>
       
-      <button class="btn btn-primary" @click="$router.push('/login')">
-        Créer ma médiathèque
-      </button>
+      <div class="header-actions">
+        <button class="btn btn-primary" @click="isAuthModalOpen = true">
+          🚀 Créer ma médiathèque
+        </button>
+        <button class="btn btn-secondary" @click="$router.push('/')">
+          🏠 Accueil
+        </button>
+      </div>
     </header>
 
-    <!-- BARRE DE FILTRES -->
+    <!-- BARRE DE FILTRES SIMPLIFIÉE -->
     <div class="toolbar">
       <input 
         v-model="searchQuery" 
@@ -28,20 +33,20 @@
       </select>
     </div>
 
-    <!-- GRILLE D'ŒUVRES -->
+    <!-- ÉTATS DE CHARGEMENT / VIDE -->
     <div v-if="loading" class="loading-state">
       <p>Chargement de la collection...</p>
     </div>
 
     <div v-else-if="filteredItems.length === 0" class="empty-state">
-      <p>Aucune œuvre trouvée.</p>
+      <p>Aucune œuvre trouvée dans cette collection.</p>
     </div>
 
+    <!-- GRILLE D'ŒUVRES (LECTURE SEULE) -->
     <div v-else class="items-container grid-view">
-      <!-- Clic sur une carte -> Ouverture de la modale -->
       <div 
         v-for="item in filteredItems" 
-        :key="item.id" 
+        :key="item.id"
         class="card-wrapper"
         @click="isAuthModalOpen = true"
       >
@@ -63,7 +68,7 @@
           <p>Rejoignez-nous pour cataloguer vos vinyles, livres et films, gérer votre wishlist et partager votre collection.</p>
           
           <div class="modal-actions">
-            <button class="btn btn-primary btn-full" @click="$router.push('/login')">
+            <button class="btn btn-primary btn-full" @click="$router.push('/')">
               🚀 Créer mon compte gratuitement
             </button>
             <button class="btn btn-secondary btn-full" @click="isAuthModalOpen = false">
@@ -96,15 +101,16 @@ onMounted(async () => {
   try {
     loading.value = true;
     const { data, error } = await supabase
-      .from('collection') // ⚠️ Ajuste selon le nom exact de ta table
+      .from('vinyls')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
+    // Exclut la wishlist (sécurité au cas où is_wishlist est null)
     items.value = (data || []).filter(item => !item.is_wishlist);
   } catch (err) {
-    console.error("Erreur :", err.message);
+    console.error("Erreur lors du chargement :", err.message);
   } finally {
     loading.value = false;
   }
@@ -130,6 +136,41 @@ const filteredItems = computed(() => {
   padding-top: max(16px, env(safe-area-inset-top));
 }
 
+.public-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #27272a;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.input-search {
+  flex: 1;
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.items-container.grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+}
+
 .card-wrapper {
   cursor: pointer;
   transition: transform 0.2s ease;
@@ -139,17 +180,11 @@ const filteredItems = computed(() => {
   transform: translateY(-2px);
 }
 
-.items-container.grid-view {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 14px;
-}
-
 /* STYLES DE LA MODALE INCITATIVE */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -182,14 +217,14 @@ const filteredItems = computed(() => {
 }
 
 .modal-icon {
-  font-size: 3rem;
+  font-size: 2.8rem;
   display: block;
   margin-bottom: 12px;
 }
 
 .modal-body h3 {
   color: #fff;
-  font-size: 1.3rem;
+  font-size: 1.25rem;
   margin-bottom: 8px;
 }
 
@@ -210,5 +245,11 @@ const filteredItems = computed(() => {
   width: 100%;
   padding: 12px;
   font-size: 0.9rem;
+}
+
+.loading-state, .empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #a1a1aa;
 }
 </style>
