@@ -145,8 +145,14 @@
         <p>Chargement des œuvres...</p>
       </div>
 
-      <div v-else-if="collectionStore.filteredItems.length === 0" class="empty-state">
-        <p>Aucune œuvre ne correspond à vos critères.</p>
+      <!-- 2. Aucun résultat trouvé (Collection vide ou filtre sans résultat) -->
+      <div v-else-if="!collectionStore.filteredItems || collectionStore.filteredItems.length === 0" class="empty-state">
+        <div class="empty-icon">📦</div>
+        <p>Aucune œuvre ne correspond à votre recherche ou votre collection est vide.</p>
+        
+        <button class="btn-add-content" @click="handleAddContentClick">
+          ➕ Ajouter une œuvre
+        </button>
       </div>
 
       <div 
@@ -239,6 +245,14 @@ function selectTab(type) {
   isLuckyPickOpen.value = false;
   showMobileSearch.value = false;
   collectionStore.activeTypeFilter = type;
+}
+
+function handleAddContentClick() {
+  if (isMobile.value) {
+    openMobileSearch();
+  } else {
+    isSearchOpen.value = true;
+  }
 }
 
 function openMobileSearch() {
@@ -521,7 +535,49 @@ async function deleteItem(id) {
 /* GRILLE / LISTE */
 .items-container.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
 .items-container.list-view { display: flex; flex-direction: column; gap: 8px; }
-.loading-state, .empty-state { text-align: center; padding: 40px; color: #a1a1aa; }
+.loading-state { text-align: center; padding: 40px; color: #a1a1aa; }
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 20px;
+  text-align: center;
+  color: #a1a1aa;
+  background: #18181b;
+  border: 1px dashed #27272a;
+  border-radius: 12px;
+  margin-top: 10px;
+}
+
+.empty-icon {
+  font-size: 2.2rem;
+}
+
+.empty-state p {
+  font-size: 0.95rem;
+  max-width: 320px;
+  margin: 0;
+}
+
+.btn-add-content {
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.btn-add-content:hover {
+  background: #2563eb;
+}
 
 .tab-item {
   background: transparent;
