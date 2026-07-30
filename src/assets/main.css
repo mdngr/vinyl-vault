@@ -65,6 +65,19 @@ button, input, select, textarea {
   max-width: 100%;
 }
 
+@media (max-width: 768px) {
+  /* Forcer au moins 16px sur mobile pour empêcher le zoom Safari */
+  input[type="text"],
+  input[type="number"],
+  input[type="search"],
+  input[type="email"],
+  input[type="password"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
