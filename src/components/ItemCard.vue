@@ -100,7 +100,7 @@ import { FORMATS_BY_TYPE, getFormatLabel } from '../constants/formats';
 
 const props = defineProps({
   item: { type: Object, required: true },
-  isListView: { type: Boolean, default: false }
+  isListView: { type: Boolean, default: false },
   isReadonly: {
     type: Boolean,
     default: false
