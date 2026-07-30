@@ -1,98 +1,3 @@
-<template>
-  <div id="app">
-    <!-- Contenu de la route actuelle -->
-    <router-view />
-
-    <!-- 📱 Tab Bar Mobile Fixe -->
-    <nav v-if="authStore.user" class="mobile-tab-bar mobile-only">
-      <button 
-        class="tab-item" 
-        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'all' }"
-        @click="navToCollection('all')"
-      >
-        <span class="tab-icon">📂</span>
-        <span class="tab-label">Tout</span>
-      </button>
-      
-      <button 
-        class="tab-item" 
-        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'vinyl' }"
-        @click="navToCollection('vinyl')"
-      >
-        <span class="tab-icon">🎵</span>
-        <span class="tab-label">Musique</span>
-      </button>
-
-      <button 
-        class="tab-item" 
-        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'book' }"
-        @click="navToCollection('book')"
-      >
-        <span class="tab-icon">📚</span>
-        <span class="tab-label">Livres</span>
-      </button>
-
-      <button 
-        class="tab-item" 
-        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'movie' }"
-        @click="navToCollection('movie')"
-      >
-        <span class="tab-icon">🎬</span>
-        <span class="tab-label">Films</span>
-      </button>
-
-
-      <button 
-        class="tab-item" 
-        :class="{ active: $route.path === '/search' }"
-        @click="$router.push('/search')"
-      >
-        <span class="tab-icon">➕</span>
-        <span class="tab-label">Ajouter</span>
-      </button>
-
-      <button 
-        class="tab-item" 
-        :class="{ active: $route.path === '/account' }"
-        @click="$router.push('/account')"
-      >
-        <span class="tab-icon">👤</span>
-        <span class="tab-label">Profil</span>
-      </button>
-    </nav>
-  </div>
-</template>
-
-<script setup>
-import { onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useAuthStore } from './stores/auth';
-import { useCollectionStore } from './stores/collection';
-import { supabase } from './services/supabase';
-
-const router = useRouter();
-const authStore = useAuthStore();
-const collectionStore = useCollectionStore();
-
-// 🔄 Synchronisation active de la session au chargement
-onMounted(async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  authStore.user = session?.user || null;
-
-  // Écoute les changements d'état (connexion, déconnexion)
-  supabase.auth.onAuthStateChange((_event, session) => {
-    authStore.user = session?.user || null;
-  });
-});
-
-function navToCollection(filterType) {
-  collectionStore.activeTypeFilter = filterType;
-  if (router.currentRoute.value.path !== '/collection') {
-    router.push('/collection');
-  }
-}
-</script>
-
 <style>
 /* Masqué par défaut en version Desktop */
 .mobile-tab-bar {
@@ -106,16 +11,19 @@ function navToCollection(filterType) {
     bottom: 0;
     left: 0;
     right: 0;
-    /* On ajoute la marge de sécurité en bas de la barre */
-    padding-bottom: env(safe-area-inset-bottom);
-    height: calc(65px + env(safe-area-inset-bottom));
+    
+    /* On fixe la hauteur utile de la barre à 56px + la zone iOS */
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     
     background: rgba(24, 24, 27, 0.98);
     backdrop-filter: blur(12px);
     border-top: 1px solid #27272a;
     display: flex !important;
     justify-content: space-around;
-    align-items: center;
+    /* Aligne le contenu en haut de la barre pour dégager la zone du bas */
+    align-items: flex-start;
+    padding-top: 6px;
     z-index: 2000;
   }
 
@@ -130,6 +38,7 @@ function navToCollection(filterType) {
     font-size: 0.65rem;
     cursor: pointer;
     flex: 1;
+    padding: 0;
   }
 
   .tab-icon {
