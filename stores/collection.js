@@ -9,7 +9,6 @@ export const useCollectionStore = defineStore('collection', {
     showWishlistOnly: false,
     currentViewMode: 'grid',
     searchQuery: '',
-    // Tri
     sortBy: 'title', // 'title', 'artist', 'year'
     sortOrder: 'asc'  // 'asc', 'desc'
   }),
@@ -18,7 +17,6 @@ export const useCollectionStore = defineStore('collection', {
     filteredItems(state) {
       const query = state.searchQuery.toLowerCase().trim();
 
-      // 1. Filtrage
       let result = state.items.filter(item => {
         const matchesStatus = state.showWishlistOnly ? !!item.is_wishlist : !item.is_wishlist;
         const matchesType = state.activeTypeFilter === 'all' || item.type === state.activeTypeFilter;
@@ -29,12 +27,10 @@ export const useCollectionStore = defineStore('collection', {
         return matchesStatus && matchesType && matchesText;
       });
 
-      // 2. Tri dynamique
       return result.sort((a, b) => {
         let valA = a[state.sortBy] || '';
         let valB = b[state.sortBy] || '';
 
-        // Si on trie par année, conversion en nombre
         if (state.sortBy === 'year') {
           valA = parseInt(valA, 10) || 0;
           valB = parseInt(valB, 10) || 0;
@@ -78,37 +74,50 @@ export const useCollectionStore = defineStore('collection', {
   },
 
   actions: {
-    // Utilitaire interne pour sauvegarder le cache
+    // 🛡️ Sauvegarde sécurisée : n'écrase jamais le cache si le tableau est vide sans raison
     saveToCache(userId) {
       if (import.meta.client && userId) {
         localStorage.setItem(`culture_vault_cache_${userId}`, JSON.stringify(this.items));
       }
     },
 
+    // 📂 Chargement sécurisé du cache local
+    loadFromCache(userId) {
+      if (!import.meta.client || !userId) return false;
+      const cacheKey = `culture_vault_cache_${userId}`;
+      const localCache = localStorage.getItem(cacheKey);
+
+      if (localCache) {
+        try {
+          const parsed = JSON.parse(localCache);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            this.items = parsed;
+            return true;
+          }
+        } catch (e) {
+          console.error("Erreur lecture cache local", e);
+        }
+      }
+      return false;
+    },
+
     async fetchItems() {
       const authStore = useAuthStore();
-      if (!authStore.user) {
-        this.items = [];
+      const userId = authStore.user?.id;
+
+      // 🔴 SÉCURITÉ : Si l'utilisateur n'est pas encore résolu, on ne touche PAS à this.items
+      if (!userId) {
         return;
       }
 
-      const userId = authStore.user.id;
-      const cacheKey = `culture_vault_cache_${userId}`;
-      this.loading = true;
-
-      // 1. Restauration du cache local si disponible
-      if (import.meta.client) {
-        const localCache = localStorage.getItem(cacheKey);
-        if (localCache) {
-          try {
-            this.items = JSON.parse(localCache);
-          } catch (e) {
-            this.items = [];
-          }
-        }
+      // 1. Tenter de charger immédiatement depuis le localStorage si le store est vide
+      if (this.items.length === 0) {
+        this.loadFromCache(userId);
       }
 
-      // 2. Requête Supabase
+      this.loading = true;
+
+      // 2. Synchronization avec Supabase
       try {
         const { $supabase } = useNuxtApp();
         const { data, error } = await $supabase
@@ -118,30 +127,28 @@ export const useCollectionStore = defineStore('collection', {
           .order('created_at', { ascending: false });
 
         if (!error && data) {
-          if (authStore.user && authStore.user.id === userId) {
-            this.items = data.map(i => ({
-              id: i.id,
-              title: i.title,
-              artist: i.artist,
-              year: i.year,
-              genre: i.genre,
-              cover: i.cover,
-              type: i.type || 'vinyl',
-              format: i.format,
-              is_wishlist: !!i.is_wishlist
-            }));
+          this.items = data.map(i => ({
+            id: i.id,
+            title: i.title,
+            artist: i.artist,
+            year: i.year,
+            genre: i.genre,
+            cover: i.cover,
+            type: i.type || 'vinyl',
+            format: i.format,
+            is_wishlist: !!i.is_wishlist
+          }));
 
-            this.saveToCache(userId);
-          }
+          // Mettre à jour le cache local avec les données fraîches
+          this.saveToCache(userId);
         }
       } catch (err) {
-        console.warn("Mode hors-ligne : utilisation des données du cache local.");
+        console.warn("Mode hors-ligne : conservation des données locales.", err.message);
       } finally {
         this.loading = false;
       }
     },
 
-    // 1. Ajouter une œuvre
     async addItem(newItem) {
       try {
         const authStore = useAuthStore();
@@ -149,7 +156,6 @@ export const useCollectionStore = defineStore('collection', {
 
         const { $supabase } = useNuxtApp();
 
-        // Contrôle des doublons en mémoire
         const cleanTitle = (newItem.title || '').trim().toLowerCase();
         const cleanArtist = (newItem.artist || '').trim().toLowerCase();
 
@@ -196,7 +202,6 @@ export const useCollectionStore = defineStore('collection', {
       }
     },
 
-    // 2. Mettre à jour une œuvre
     async updateItem(id, updatedFields) {
       try {
         const authStore = useAuthStore();
@@ -230,7 +235,6 @@ export const useCollectionStore = defineStore('collection', {
       }
     },
 
-    // 3. Supprimer une œuvre
     async deleteItem(id) {
       const authStore = useAuthStore();
       if (!authStore.user) return;
@@ -243,7 +247,12 @@ export const useCollectionStore = defineStore('collection', {
       this.saveToCache(authStore.user.id);
     },
 
+    // 🧹 Nettoyage uniquement sur déconnexion explicite
     clearMemory() {
+      const authStore = useAuthStore();
+      if (import.meta.client && authStore.user?.id) {
+        localStorage.removeItem(`culture_vault_cache_${authStore.user.id}`);
+      }
       this.items = [];
     }
   }
