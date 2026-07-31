@@ -128,9 +128,9 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from '../stores/auth';
-import { useCollectionStore } from '../stores/collection';
-import { supabase } from '../services/supabase';
+import { useAuthStore } from '../stores/auth.js';
+import { useCollectionStore } from '../stores/collection.js';
+import { supabase } from '../services/supabase.js';
 import DiscogsImportModal from '../components/DiscogsImportModal.vue';
 
 const router = useRouter();

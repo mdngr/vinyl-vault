@@ -85,11 +85,11 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { supabase } from '../services/supabase';
+import { supabase } from '../../services/supabase.js';
 import ItemCard from '../components/ItemCard.vue';
 
-const route = useRoute();
-const userId = route.params.userId;
+const route = useRoute()
+const userId = route.params.id;
 
 const items = ref([]);
 const loading = ref(true);
