@@ -85,18 +85,40 @@ const isTabBarHidden = ref(false)
 let lastScrollY = 0
 
 function handleScroll() {
-  if (!import.meta.client) return
-  
-  const currentScrollY = window.scrollY
+  if (!import.meta.client) return;
 
-  // On ne masque la barre que si on a dépassé 60px de défilement (évite les petits rebonds au sommet)
-  if (currentScrollY > 60 && currentScrollY > lastScrollY) {
-    isTabBarHidden.value = true // Scroll vers le bas -> Masquer
-  } else {
-    isTabBarHidden.value = false // Scroll vers le haut / arrêt -> Réafficher
+  const currentScrollY = window.scrollY;
+  const windowHeight = window.innerHeight;
+  const documentHeight = document.documentElement.scrollHeight;
+
+  // 1. Toujours afficher si on est proche du haut de page (<= 10px)
+  if (currentScrollY <= 10) {
+    isTabBarHidden.value = false;
+    lastScrollY = currentScrollY;
+    return;
   }
 
-  lastScrollY = currentScrollY
+  // 2. 🎯 NOUVEAU : Réafficher automatiquement si on atteint le tout bas de la page
+  // (marge de 20px pour anticiper les arrondis sur mobile / barres de navigation natives)
+  if (currentScrollY + windowHeight >= documentHeight - 20) {
+    isTabBarHidden.value = false;
+    lastScrollY = currentScrollY;
+    return;
+  }
+
+  // 3. Détection classique du sens de défilement
+  const delta = currentScrollY - lastScrollY;
+
+  if (Math.abs(delta) > 5) {
+    if (delta > 0) {
+      // Scroll vers le bas -> Cacher
+      isTabBarHidden.value = true;
+    } else {
+      // Scroll vers le haut -> Réafficher
+      isTabBarHidden.value = false;
+    }
+    lastScrollY = currentScrollY;
+  }
 }
 
 // Initialisation au chargement
@@ -129,9 +151,16 @@ function navToCollection(filterType) {
 html, body {
   margin: 0;
   padding: 0;
-  background-color: #121212;
+  background-color: #09090b; /* Couleur de fond uniforme pour toute l'application */
   color: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  min-height: 100vh;
+}
+
+/* S'assure que le conteneur racine prend au moins toute la hauteur avec la bonne couleur */
+#app {
+  min-height: 100vh;
+  background-color: #09090b;
 }
 
 /* Masqué par défaut en version Desktop */
@@ -141,9 +170,10 @@ html, body {
 
 /* Visibilité forcée en version Mobile (<= 768px) */
 @media (max-width: 768px) {
-  /* Évite que le bas des pages ne soit masqué sous la barre flottante */
+  /* Espace de sécurité sous le contenu avec le même fond que la page */
   body {
     padding-bottom: calc(85px + env(safe-area-inset-bottom, 0px));
+    background-color: #09090b;
   }
 
   .mobile-tab-bar {
@@ -169,13 +199,13 @@ html, body {
     
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
     
-    /* Animation fluide de glissement */
+    /* Animation de glissement */
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
     transform: translateY(0);
     opacity: 1;
   }
 
-  /* État masqué lors du scroll vers le bas */
+  /* État masqué au scroll vers le bas */
   .mobile-tab-bar.is-hidden {
     transform: translateY(calc(100% + 24px));
     opacity: 0;
