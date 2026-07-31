@@ -62,7 +62,7 @@
       </button>
     </form>
 
-    <!-- 📷 1. MODALE SCANNER VIDÉO EN DIRECT -->
+    <!-- 📷 MODALE SCANNER VIDÉO EN DIRECT -->
     <div v-if="isScanning" class="scanner-modal">
       <div class="scanner-container">
         <div class="scanner-header">
@@ -100,31 +100,6 @@
         <p class="scanner-hint">Pointez la caméra vers le code EAN / ISBN</p>
       </div>
     </div>
-
-    <!-- 🔍 2. MODALE CROPPER POUR LA PHOTO IMPORTÉE (FALLBACK) -->
-    <div v-if="isCropping" class="crop-modal">
-      <div class="crop-container">
-        <div class="crop-header">
-          <span>🔎 Zoomer & Recadrer le code-barres</span>
-          <button class="btn-close-scanner" @click="cancelCrop">✕ Annuler</button>
-        </div>
-
-        <div class="crop-image-wrapper">
-          <img ref="cropImageRef" :src="rawImageSrc" class="crop-image" alt="Code-barres à recadrer" />
-        </div>
-
-        <div class="crop-actions">
-          <button type="button" class="btn-crop-zoom" @click="cropZoomIn">🔍 +</button>
-          <button type="button" class="btn-crop-zoom" @click="cropZoomOut">🔍 -</button>
-          <button type="button" class="btn-crop-submit" @click="confirmCropAndScan" :disabled="loading">
-            {{ loading ? 'Analyse...' : '✅ Valider & Analyser' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Container caché pour l'analyse d'image Cropper -->
-    <div id="interactive-scanner-hidden" style="display: none;"></div>
 
     <!-- RÉSULTATS DE RECHERCHE -->
     <div v-if="results.length > 0" class="results-grid">
@@ -206,12 +181,6 @@ const scannerZoomMax = ref(3);
 let scannerVideoElement = null;
 let scannerVideoTrack = null;
 let isHardwareZoom = false;
-
-// Fallback photo Cropper refs
-const isCropping = ref(false);
-const rawImageSrc = ref('');
-const cropImageRef = ref(null);
-let cropperInstance = null;
 
 const placeholderText = computed(() => {
   if (searchType.value === 'vinyl') return 'Album, artiste, EAN...';
@@ -345,95 +314,29 @@ function stopScanner() {
   }
 }
 
-// 📸 FALLBACK PHOTO : GESTION D'IMAGE AVEC CROPPER
-function handleFileUpload(event) {
+// 📸 FALLBACK PHOTO : ANALYSE DIRECTE DU FICHIER IMPORTÉ
+async function handleFileUpload(event) {
   if (!import.meta.client) return;
   const file = event.target.files[0];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    rawImageSrc.value = e.target.result;
-    isCropping.value = true;
-    await nextTick();
-    initCropper();
-  };
-  reader.readAsDataURL(file);
-  event.target.value = '';
-}
-
-async function initCropper() {
-  if (!import.meta.client) return;
-  if (cropperInstance) cropperInstance.destroy();
-
-  const { default: Cropper } = await import('cropperjs');
-  cropperInstance = new Cropper(cropImageRef.value, {
-    viewMode: 1,
-    dragMode: 'move',
-    autoCropArea: 0.85,
-    restore: false,
-    guides: true,
-    center: true,
-    highlight: false,
-    cropBoxMovable: true,
-    cropBoxResizable: true,
-    zoomable: true,
-    zoomOnTouch: true,
-    zoomOnWheel: true,
-  });
-}
-
-function cropZoomIn() {
-  cropperInstance?.zoom(0.15);
-}
-
-function cropZoomOut() {
-  cropperInstance?.zoom(-0.15);
-}
-
-function cancelCrop() {
-  if (cropperInstance) cropperInstance.destroy();
-  isCropping.value = false;
-  rawImageSrc.value = '';
-}
-
-async function confirmCropAndScan() {
-  if (!cropperInstance || !import.meta.client) return;
   loading.value = true;
-
-  const canvas = cropperInstance.getCroppedCanvas({
-    width: 800,
-    height: 800,
-    imageSmoothingEnabled: true,
-    imageSmoothingQuality: 'high',
-  });
-
-  canvas.toBlob(async (blob) => {
-    if (!blob) {
-      loading.value = false;
-      return;
-    }
-
-    const croppedFile = new File([blob], "barcode-cropped.jpg", { type: "image/jpeg" });
+  try {
     const { Html5Qrcode } = await import('html5-qrcode');
-    const html5QrCode = new Html5Qrcode("interactive-scanner-hidden");
-
-    try {
-      const decodedText = await html5QrCode.scanFile(croppedFile, true);
-      query.value = decodedText;
-      cancelCrop();
-      searchApi();
-    } catch (err) {
-      alert("Aucun code-barres détecté. Essayez de zoomer plus près du code-barres.");
-    } finally {
-      loading.value = false;
-    }
-  }, 'image/jpeg');
+    const html5QrCode = new Html5Qrcode("interactive-scanner");
+    const decodedText = await html5QrCode.scanFile(file, true);
+    query.value = decodedText;
+    searchApi();
+  } catch (err) {
+    alert("Aucun code-barres n'a pu être détecté sur cette photo. Essayez d'améliorer la luminosité ou saisissez votre recherche manuellement.");
+  } finally {
+    loading.value = false;
+    event.target.value = '';
+  }
 }
 
 onUnmounted(() => {
   stopScanner();
-  if (cropperInstance) cropperInstance.destroy();
 });
 
 // 🔍 RECHERCHE API (Discogs / OpenLibrary / TMDB)
@@ -442,7 +345,7 @@ async function searchApi() {
   loading.value = true;
   results.value = [];
 
-  const discogsToken = config.public?.discogsToken || 'YOUR_DISCOGS_TOKEN';
+  const discogsToken = config.public?.discogsToken || '';
 
   try {
     if (searchType.value === 'vinyl') {
@@ -513,7 +416,6 @@ async function moveToCollection(existingItem) {
 </script>
 
 <style scoped>
-
 .search-panel { display: flex; flex-direction: column; gap: 16px; }
 .media-type-tabs { display: flex; gap: 8px; }
 .tab-btn { flex: 1; padding: 12px; background: #18181b; border: 1px solid #27272a; color: #a1a1aa; border-radius: 12px; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
@@ -527,7 +429,7 @@ async function moveToCollection(existingItem) {
 .hidden-file-input { display: none; }
 .btn-submit { width: 100%; padding: 14px; background: #3b82f6; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
 
-/* 1. MODALE SCANNER VIDÉO */
+/* MODALE SCANNER VIDÉO */
 .scanner-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.95); display: flex; justify-content: center; align-items: center; z-index: 4000; padding: 16px; }
 .scanner-container { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 20px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .scanner-header { display: flex; justify-content: space-between; align-items: center; width: 100%; color: #fff; font-weight: 700; }
@@ -571,16 +473,6 @@ async function moveToCollection(existingItem) {
   min-width: 45px;
   text-align: center;
 }
-
-/* 2. MODALE CROPPER PHOTO */
-.crop-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.95); display: flex; justify-content: center; align-items: center; z-index: 4000; padding: 16px; }
-.crop-container { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 20px; width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 16px; }
-.crop-header { display: flex; justify-content: space-between; align-items: center; color: #fff; font-weight: 700; }
-.crop-image-wrapper { width: 100%; height: 300px; background: #000; border-radius: 12px; overflow: hidden; position: relative; }
-.crop-image { max-width: 100%; display: block; }
-.crop-actions { display: flex; gap: 10px; align-items: center; width: 100%; }
-.btn-crop-zoom { background: #27272a; border: 1px solid #3f3f46; color: #fff; padding: 12px 16px; border-radius: 10px; font-weight: 700; font-size: 0.9rem; cursor: pointer; min-width: 48px; }
-.btn-crop-submit { flex: 1; background: #3b82f6; color: #fff; border: none; padding: 12px; border-radius: 10px; font-weight: 700; font-size: 0.9rem; cursor: pointer; }
 
 /* RÉSULTATS */
 .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-top: 12px; }
