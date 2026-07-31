@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia';
-import { supabase } from '../services/supabase';
 import { useAuthStore } from './auth';
 
 export const useCollectionStore = defineStore('collection', {
@@ -10,7 +9,7 @@ export const useCollectionStore = defineStore('collection', {
     showWishlistOnly: false,
     currentViewMode: 'grid',
     searchQuery: '',
-    // 🔽 Nouveaux états pour le tri
+    // Tri
     sortBy: 'title', // 'title', 'artist', 'year'
     sortOrder: 'asc'  // 'asc', 'desc'
   }),
@@ -35,7 +34,7 @@ export const useCollectionStore = defineStore('collection', {
         let valA = a[state.sortBy] || '';
         let valB = b[state.sortBy] || '';
 
-        // Si on trie par année, on convertit en nombre
+        // Si on trie par année, conversion en nombre
         if (state.sortBy === 'year') {
           valA = parseInt(valA, 10) || 0;
           valB = parseInt(valB, 10) || 0;
@@ -56,9 +55,7 @@ export const useCollectionStore = defineStore('collection', {
       const items = this.filteredItems;
       const count = items.length;
 
-      if (count === 0) {
-        return '0 élément';
-      }
+      if (count === 0) return '0 élément';
 
       const pluralize = (nb, singular, plural = singular + 's') => {
         return `${nb} ${nb > 1 ? plural : singular}`;
@@ -66,27 +63,28 @@ export const useCollectionStore = defineStore('collection', {
 
       const status = state.showWishlistOnly ? 'en wishlist' : 'en collection';
 
-      // Catégorie Musique (CDs, Vinyles, Cassettes...)
       if (state.activeTypeFilter === 'vinyl') {
         return `${pluralize(count, 'œuvre musicale', 'œuvres musicales')} ${status}`;
       }
-
-      // Catégorie Livres (Romans, BDs, Mangas...)
       if (state.activeTypeFilter === 'book') {
         return `${pluralize(count, 'livre')} ${status}`;
       }
-
-      // Catégorie Films (DVDs, Blu-ray...)
       if (state.activeTypeFilter === 'movie') {
         return `${pluralize(count, 'film')} ${status}`;
       }
 
-      // Tout
       return `${pluralize(count, 'œuvre')} ${status}`;
     }
   },
 
   actions: {
+    // Utilitaire interne pour sauvegarder le cache
+    saveToCache(userId) {
+      if (import.meta.client && userId) {
+        localStorage.setItem(`culture_vault_cache_${userId}`, JSON.stringify(this.items));
+      }
+    },
+
     async fetchItems() {
       const authStore = useAuthStore();
       if (!authStore.user) {
@@ -98,19 +96,22 @@ export const useCollectionStore = defineStore('collection', {
       const cacheKey = `culture_vault_cache_${userId}`;
       this.loading = true;
 
-      // 1. Restauration immédiate du cache local de l'utilisateur
-      const localCache = localStorage.getItem(cacheKey);
-      if (localCache) {
-        try {
-          this.items = JSON.parse(localCache);
-        } catch (e) {
-          this.items = [];
+      // 1. Restauration du cache local si disponible
+      if (import.meta.client) {
+        const localCache = localStorage.getItem(cacheKey);
+        if (localCache) {
+          try {
+            this.items = JSON.parse(localCache);
+          } catch (e) {
+            this.items = [];
+          }
         }
       }
 
-      // 2. Fetch Supabase isolé
+      // 2. Requête Supabase
       try {
-        const { data, error } = await supabase
+        const { $supabase } = useNuxtApp();
+        const { data, error } = await $supabase
           .from('vinyls')
           .select('*')
           .eq('user_id', userId)
@@ -130,31 +131,31 @@ export const useCollectionStore = defineStore('collection', {
               is_wishlist: !!i.is_wishlist
             }));
 
-            localStorage.setItem(cacheKey, JSON.stringify(this.items));
+            this.saveToCache(userId);
           }
         }
       } catch (err) {
-        console.warn("Mode hors-ligne : utilisation du cache local.");
+        console.warn("Mode hors-ligne : utilisation des données du cache local.");
       } finally {
         this.loading = false;
       }
     },
 
-    // 1. Ajouter une œuvre (avec le format)
-    // Dans src/stores/collection.js -> actions
-
+    // 1. Ajouter une œuvre
     async addItem(newItem) {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) throw new Error("Utilisateur non connecté");
+        const authStore = useAuthStore();
+        if (!authStore.user) throw new Error("Utilisateur non connecté");
 
-        // 🔍 1. Contrôle des doublons en mémoire
-        const cleanTitle = newItem.title.trim().toLowerCase();
-        const cleanArtist = newItem.artist.trim().toLowerCase();
+        const { $supabase } = useNuxtApp();
+
+        // Contrôle des doublons en mémoire
+        const cleanTitle = (newItem.title || '').trim().toLowerCase();
+        const cleanArtist = (newItem.artist || '').trim().toLowerCase();
 
         const isDuplicate = this.items.some(item => {
-          const sameTitle = item.title.trim().toLowerCase() === cleanTitle;
-          const sameArtist = item.artist.trim().toLowerCase() === cleanArtist;
+          const sameTitle = (item.title || '').trim().toLowerCase() === cleanTitle;
+          const sameArtist = (item.artist || '').trim().toLowerCase() === cleanArtist;
           const sameType = item.type === newItem.type;
           return sameTitle && sameArtist && sameType;
         });
@@ -163,12 +164,11 @@ export const useCollectionStore = defineStore('collection', {
           const confirmAdd = confirm(
             `"${newItem.title}" de ${newItem.artist} existe déjà dans ta médiathèque.\nVeux-tu quand même l'ajouter ?`
           );
-          if (!confirmAdd) return false; // Annulation par l'utilisateur
+          if (!confirmAdd) return false;
         }
 
-        // 📤 2. Insertion dans Supabase
         const payload = {
-          user_id: session.user.id,
+          user_id: authStore.user.id,
           title: newItem.title,
           artist: newItem.artist,
           year: newItem.year || null,
@@ -178,7 +178,7 @@ export const useCollectionStore = defineStore('collection', {
           is_wishlist: !!newItem.is_wishlist
         };
 
-        const { data, error } = await supabase
+        const { data, error } = await $supabase
           .from('vinyls')
           .insert([payload])
           .select();
@@ -187,25 +187,29 @@ export const useCollectionStore = defineStore('collection', {
 
         if (data && data.length > 0) {
           this.items.unshift(data[0]);
+          this.saveToCache(authStore.user.id);
         }
-        return true; // Ajout réussi
+        return true;
       } catch (err) {
         console.error("Erreur lors de l'ajout :", err.message);
         throw err;
       }
     },
 
-    // 2. Mettre à jour une œuvre (Édition de carte)
+    // 2. Mettre à jour une œuvre
     async updateItem(id, updatedFields) {
       try {
-        const { data, error } = await supabase
+        const authStore = useAuthStore();
+        const { $supabase } = useNuxtApp();
+
+        const { data, error } = await $supabase
           .from('vinyls')
           .update({
             title: updatedFields.title,
             artist: updatedFields.artist,
             year: updatedFields.year,
             type: updatedFields.type,
-            format: updatedFields.format || null, // 👈 S'assurer que le format est sauvegardé
+            format: updatedFields.format || null,
             cover: updatedFields.cover,
             is_wishlist: updatedFields.is_wishlist
           })
@@ -214,25 +218,29 @@ export const useCollectionStore = defineStore('collection', {
 
         if (error) throw error;
 
-        // Mettre à jour le state local Pinia
         const index = this.items.findIndex(item => item.id === id);
         if (index !== -1 && data && data.length > 0) {
           this.items[index] = data[0];
+          if (authStore.user) {
+            this.saveToCache(authStore.user.id);
+          }
         }
       } catch (err) {
         console.error("Erreur mise à jour :", err.message);
       }
     },
 
+    // 3. Supprimer une œuvre
     async deleteItem(id) {
       const authStore = useAuthStore();
       if (!authStore.user) return;
 
-      const { error } = await supabase.from('vinyls').delete().eq('id', id);
+      const { $supabase } = useNuxtApp();
+      const { error } = await $supabase.from('vinyls').delete().eq('id', id);
       if (error) throw error;
 
       this.items = this.items.filter(i => i.id !== id);
-      localStorage.setItem(`culture_vault_cache_${authStore.user.id}`, JSON.stringify(this.items));
+      this.saveToCache(authStore.user.id);
     },
 
     clearMemory() {
