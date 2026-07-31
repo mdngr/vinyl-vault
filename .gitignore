@@ -1,5 +1,18 @@
-node_modules
-dist
+# Dependances
+node_modules/
+
+# Nuxt & Build
+.nuxt/
+.output/
+dist/
+
+# Env & Secrets (Très important !)
 .env
-.env.local
+.env.*
+!.env.example
+
+# Logs & Cache
+*.log
 .DS_Store
+.idea/
+.vscode/
