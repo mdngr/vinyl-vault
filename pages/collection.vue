@@ -19,7 +19,7 @@
         <h3>🎲 Lucky Pick</h3>
       </div>
       <div class="mobile-view-content">
-        <LuckyPickView />
+        <LuckyPickModal :is-open="true" @close="isLuckyPickOpen = false" />
       </div>
     </div>
 
@@ -37,11 +37,11 @@
             🎲 Lucky Pick
           </button>
 
-          <button class="btn btn-primary" @click="$router.push('/search')">
+          <button class="btn btn-primary" @click="navigateTo('/search')">
             {{ isSearchOpen ? '✕ Fermer' : '➕ Ajouter' }}
           </button>
 
-          <button class="btn btn-secondary" @click="$router.push('/account')">
+          <button class="btn btn-secondary" @click="navigateTo('/account')">
             👤 Mon compte
           </button>
         </div>
@@ -88,9 +88,9 @@
           </button>
         </div>
 
-        <!-- 🎲 BOUTON LUCKY PICK -->
-        <button v-if="isMobile" class="chip-btn btn-lucky-mobile" @click="isLuckyPickOpen = true">
-          🎲
+        <!-- 🎲 BOUTON LUCKY PICK (Mobile & Tablette) -->
+        <button class="chip-btn btn-lucky-mobile mobile-only" @click="isLuckyPickOpen = true">
+          🎲 Pick
         </button>
 
         <button class="chip-btn" @click="isSortModalOpen = true">
@@ -186,17 +186,20 @@
 </template>
 
 <script setup>
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { useAuthStore } from '~/stores/auth';
+import { useCollectionStore } from '~/stores/collection';
+import ItemCard from '~/components/ItemCard.vue';
+import ApiSearchPanel from '~/components/ApiSearchPanel.vue';
+import LuckyPickModal from '~/components/LuckyPickModal.vue';
+import SortModal from '~/components/SortModal.vue';
+
 useHead({
   title: 'Ma collection - Culture Vault',
-})
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { useAuthStore } from '../stores/auth';
-import { useCollectionStore } from '../stores/collection';
-import ItemCard from '../components/ItemCard.vue';
-import ApiSearchPanel from '../components/ApiSearchPanel.vue';
-import LuckyPickModal from '../components/LuckyPickModal.vue';
-import LuckyPickView from '../components/LuckyPickModal.vue'; 
-import SortModal from '../components/SortModal.vue';
+  meta: [
+    { name: 'description', content: 'Explorez et gérez votre collection de vinyles, livres et films.' }
+  ]
+});
 
 const isSortModalOpen = ref(false);
 
@@ -209,24 +212,26 @@ const showMobileSearch = ref(false);
 const mobileSearchInput = ref(null);
 
 const isListView = ref(false);
-const width = ref(0)
-const isMobile = ref(width <= 768);
+const isMobile = ref(false);
 
 function handleResize() {
-  isMobile.value = width <= 768;
+  if (import.meta.client) {
+    isMobile.value = window.innerWidth <= 768;
+  }
 }
 
 onMounted(async () => {
-  width.value = window.innerWidth
-  window.addEventListener('resize', () => {
-    width.value = window.innerWidth
-  })
-  window.addEventListener('resize', handleResize);
+  handleResize();
+  if (import.meta.client) {
+    window.addEventListener('resize', handleResize);
+  }
   await collectionStore.fetchItems();
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize);
+  if (import.meta.client) {
+    window.removeEventListener('resize', handleResize);
+  }
 });
 
 watch(
@@ -248,31 +253,12 @@ function toggleMobileSearch() {
   }
 }
 
-function selectTab(type) {
-  isSearchOpen.value = false;
-  isLuckyPickOpen.value = false;
-  showMobileSearch.value = false;
-  collectionStore.activeTypeFilter = type;
-}
-
 function handleAddContentClick() {
   if (isMobile.value) {
-    openMobileSearch();
+    navigateTo('/search');
   } else {
     isSearchOpen.value = true;
   }
-}
-
-function openMobileSearch() {
-  isLuckyPickOpen.value = false;
-  showMobileSearch.value = false;
-  isSearchOpen.value = !isSearchOpen.value;
-}
-
-function openMobileLuckyPick() {
-  isSearchOpen.value = false;
-  showMobileSearch.value = false;
-  isLuckyPickOpen.value = !isLuckyPickOpen.value;
 }
 
 async function deleteItem(id) {
@@ -417,7 +403,7 @@ async function deleteItem(id) {
   border-color: #3b82f6;
 }
 
-/* 📱 BANDEAU MOBILE DE RECHERCHE DÉROULANT */
+/* BANDEAU MOBILE DE RECHERCHE DÉROULANT */
 .mobile-search-overlay {
   background: #18181b;
   border: 1px solid #27272a;
@@ -587,37 +573,13 @@ async function deleteItem(id) {
   background: #2563eb;
 }
 
-.tab-item {
-  background: transparent;
-  border: none;
-  color: #71717a;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  font-size: 0.65rem;
-  cursor: pointer;
-  flex: 1;
-}
-
-.tab-icon { font-size: 1.1rem; }
-.tab-item.active { color: #3b82f6; font-weight: 700; }
-.tab-action-lucky.active, .tab-action-lucky { color: #c084fc; }
-.tab-action-add.active, .tab-action-add { color: #3b82f6; }
-
-/* Bouton Lucky Pick compact dans la toolbar */
+/* Bouton Lucky Pick compact dans la toolbar mobile */
 .btn-lucky-mobile {
   background: rgba(139, 92, 246, 0.2) !important;
   border-color: rgba(139, 92, 246, 0.4) !important;
   color: #c084fc !important;
   font-weight: 700;
-  padding: 8px 10px;
-}
-
-@media (max-width: 768px) {
-  .btn-lucky-mobile {
-    padding: 7px 10px;
-    font-size: 0.75rem;
-  }
+  padding: 7px 10px;
+  font-size: 0.75rem;
 }
 </style>

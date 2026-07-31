@@ -66,7 +66,7 @@
 </template>
 
 <script setup>
-import { useCollectionStore } from '../stores/collection';
+import { useCollectionStore } from '~/stores/collection';
 
 defineProps({
   isOpen: { type: Boolean, default: false }

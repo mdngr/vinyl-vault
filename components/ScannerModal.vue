@@ -8,7 +8,7 @@
 
       <div id="reader-vue" class="scanner-viewport"></div>
 
-      <!-- Contrôle du Zoom par Boutons (Affiche dès qu'on détecte la vidéo) -->
+      <!-- Contrôle du Zoom par Boutons -->
       <div v-if="hasZoomSupport" class="zoom-controls">
         <button 
           type="button" 
@@ -35,8 +35,7 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { ref, watch, nextTick, onUnmounted } from 'vue';
 
 const props = defineProps({
   isOpen: Boolean
@@ -64,22 +63,26 @@ watch(() => props.isOpen, async (newVal) => {
 });
 
 async function startScanner() {
-  const formatsSupported = [
-    Html5QrcodeSupportedFormats.EAN_13,
-    Html5QrcodeSupportedFormats.EAN_8,
-    Html5QrcodeSupportedFormats.UPC_A,
-    Html5QrcodeSupportedFormats.UPC_E,
-    Html5QrcodeSupportedFormats.CODE_128
-  ];
-
-  html5QrCode = new Html5Qrcode("reader-vue", { formatsToSupport: formatsSupported });
-
-  const config = {
-    fps: 15,
-    qrbox: { width: 280, height: 140 }
-  };
+  if (!import.meta.client) return;
 
   try {
+    const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+
+    const formatsSupported = [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128
+    ];
+
+    html5QrCode = new Html5Qrcode("reader-vue", { formatsToSupport: formatsSupported });
+
+    const config = {
+      fps: 15,
+      qrbox: { width: 280, height: 140 }
+    };
+
     await html5QrCode.start(
       { facingMode: "environment" },
       config,
@@ -99,6 +102,7 @@ async function startScanner() {
 }
 
 function setupZoom() {
+  if (!import.meta.client) return;
   let attempts = 0;
 
   const checkVideo = setInterval(() => {
@@ -171,8 +175,12 @@ async function stopScanner() {
   hasZoomSupport.value = false;
 
   if (html5QrCode && html5QrCode.isScanning) {
-    await html5QrCode.stop();
-    html5QrCode.clear();
+    try {
+      await html5QrCode.stop();
+      html5QrCode.clear();
+    } catch (e) {
+      console.warn("Erreur arrêt scanner :", e);
+    }
   }
 }
 
@@ -180,6 +188,10 @@ function close() {
   stopScanner();
   emit('close');
 }
+
+onUnmounted(() => {
+  stopScanner();
+});
 </script>
 
 <style scoped>
@@ -231,7 +243,7 @@ function close() {
   object-fit: cover;
 }
 
-/* 🔘 BARRE DE ZOMM AVEC BOUTONS */
+/* 🔘 BARRE DE ZOOM AVEC BOUTONS */
 .zoom-controls {
   display: flex;
   align-items: center;

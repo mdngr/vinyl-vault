@@ -2,7 +2,7 @@
   <div class="public-collection-page">
     <header class="public-header">
       <div class="header-titles">
-        <h2>Collection Partagée de </h2>
+        <h2>Collection Partagée {{ ownerName ? `de ${ownerName}` : '' }}</h2>
         <p class="stats-text">{{ items.length }} œuvre(s)</p>
       </div>
       
@@ -10,7 +10,7 @@
         <button class="btn btn-primary" @click="isAuthModalOpen = true">
           🚀 Créer ma médiathèque
         </button>
-        <button class="btn btn-secondary" @click="$router.push('/')">
+        <button class="btn btn-secondary" @click="navigateTo('/')">
           🏠 Accueil
         </button>
       </div>
@@ -68,7 +68,7 @@
           <p>Rejoignez-nous pour cataloguer vos vinyles, livres et films, gérer votre wishlist et partager votre collection.</p>
           
           <div class="modal-actions">
-            <button class="btn btn-primary btn-full" @click="$router.push('/')">
+            <button class="btn btn-primary btn-full" @click="navigateTo('/')">
               🚀 Créer mon compte gratuitement
             </button>
             <button class="btn btn-secondary btn-full" @click="isAuthModalOpen = false">
@@ -84,36 +84,59 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
-import { supabase } from '../../services/supabase.js';
-import ItemCard from '../components/ItemCard.vue';
+import ItemCard from '~/components/ItemCard.vue';
 
-const route = useRoute()
+const route = useRoute();
+const { $supabase } = useNuxtApp();
 const userId = route.params.id;
 
 const items = ref([]);
+const ownerProfile = ref(null);
 const loading = ref(true);
 const searchQuery = ref('');
 const activeFilter = ref('all');
 const isAuthModalOpen = ref(false);
 
+const ownerName = computed(() => {
+  if (!ownerProfile.value) return '';
+  const first = ownerProfile.value.first_name || '';
+  const last = ownerProfile.value.last_name || '';
+  return `${first} ${last}`.trim();
+});
+
+useHead({
+  title: computed(() => ownerName.value ? `Collection de ${ownerName.value} - Culture Vault` : 'Collection partagée - Culture Vault'),
+  meta: [
+    { name: 'description', content: 'Découvrez cette collection partagée de vinyles, livres et films sur Culture Vault.' }
+  ]
+});
+
 onMounted(async () => {
   try {
     loading.value = true;
-    const { data, error } = await supabase
+    
+    // Fetch des œuvres du profil partagé
+    const { data: vinylsData, error: vinylsError } = await $supabase
       .from('vinyls')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
-    const { data: profile } = await supabase
+
+    if (vinylsError) throw vinylsError;
+
+    // Fetch des infos utilisateur (Profil)
+    const { data: profileData } = await $supabase
       .from('profiles')
       .select('first_name, last_name, city')
       .eq('id', userId)
-      .single()
+      .maybeSingle();
 
-    if (error) throw error;
-    // Exclut la wishlist (sécurité au cas où is_wishlist est null)
-    items.value = (data || []).filter(item => !item.is_wishlist);
+    if (profileData) {
+      ownerProfile.value = profileData;
+    }
+
+    // Exclure la wishlist pour le mode public
+    items.value = (vinylsData || []).filter(item => !item.is_wishlist);
   } catch (err) {
     console.error("Erreur lors du chargement :", err.message);
   } finally {
@@ -150,6 +173,18 @@ const filteredItems = computed(() => {
   border-bottom: 1px solid #27272a;
 }
 
+.header-titles h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.5rem;
+}
+
+.stats-text {
+  margin: 4px 0 0 0;
+  font-size: 0.85rem;
+  color: #a1a1aa;
+}
+
 .header-actions {
   display: flex;
   gap: 10px;
@@ -168,6 +203,20 @@ const filteredItems = computed(() => {
   color: #fff;
   padding: 8px 12px;
   border-radius: 8px;
+  outline: none;
+}
+
+.input-search:focus {
+  border-color: #3b82f6;
+}
+
+.select-chip {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #a1a1aa;
+  padding: 8px 12px;
+  border-radius: 8px;
+  outline: none;
 }
 
 .items-container.grid-view {
@@ -252,9 +301,46 @@ const filteredItems = computed(() => {
   font-size: 0.9rem;
 }
 
+.btn-primary {
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background: #27272a;
+  color: #ffffff;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .loading-state, .empty-state {
   text-align: center;
   padding: 40px;
   color: #a1a1aa;
+}
+
+@media (max-width: 768px) {
+  .public-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions .btn {
+    flex: 1;
+    text-align: center;
+  }
 }
 </style>

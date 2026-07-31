@@ -109,8 +109,8 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { useCollectionStore } from '../stores/collection';
-import { FORMATS_BY_TYPE, getFormatLabel } from '../constants/formats';
+import { useCollectionStore } from '~/stores/collection';
+import { FORMATS_BY_TYPE, getFormatLabel } from '~/constants/formats';
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -150,25 +150,23 @@ const availableFormats = computed(() => {
   return FORMATS_BY_TYPE[form.value.type] || [];
 });
 
-// Nom du marchand éthique selon le type
+// Nom du marchand selon le type
 const merchantName = computed(() => {
   if (props.item.type === 'book') return 'Place des Libraires';
   if (props.item.type === 'vinyl') return 'Bandcamp / Discogs';
   return 'Éditeurs Indépendants';
 });
 
-// URL vers des alternatives éthiques & passionnées
+// URL vers des recherches dédiées
 const affiliateUrl = computed(() => {
   const query = encodeURIComponent(`${props.item.title || ''} ${props.item.artist || ''}`);
 
   if (props.item.type === 'book') {
     return `https://www.place-des-libraires.fr/listelivres.php?mots=${query}`;
   } else if (props.item.type === 'vinyl') {
-    // Redirection vers la recherche Bandcamp
     return `https://bandcamp.com/search?q=${query}`;
   }
 
-  // Pour le cinéma / supports physiques rares (ex: recherche Discogs ou boutique spécialisée)
   return `https://www.discogs.com/fr/search/?q=${query}`;
 });
 
@@ -371,6 +369,14 @@ async function saveEdit() {
   margin-bottom: 16px;
 }
 
+.btn-close {
+  background: transparent;
+  border: none;
+  color: #71717a;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
 .edit-form {
   display: flex;
   flex-direction: column;
@@ -411,5 +417,25 @@ async function saveEdit() {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 8px;
+}
+
+.btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+}
+
+.btn-secondary {
+  background: #27272a;
+  color: #ffffff;
+  border: 1px solid #3f3f46;
 }
 </style>

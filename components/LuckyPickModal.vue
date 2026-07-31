@@ -91,8 +91,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import { useCollectionStore } from '../stores/collection';
-import { getFormatLabel } from '../constants/formats';
+import { useCollectionStore } from '~/stores/collection';
+import { getFormatLabel } from '~/constants/formats';
 
 const props = defineProps({
   isOpen: { type: Boolean, default: false },
@@ -126,7 +126,7 @@ function getFormatText(item) {
 
 // Animation de roulette / tirage au sort
 function roll() {
-  if (!hasItems.value) return;
+  if (!hasItems.value || !import.meta.client) return;
 
   isSpinning.value = true;
   let counter = 0;
@@ -149,16 +149,16 @@ function closeModal() {
   emit('close');
 }
 
-// Lancer le tirage automatiquement au montage
+// Lancer le tirage automatiquement au montage côté client
 onMounted(() => {
-  if (hasItems.value) {
+  if (hasItems.value && import.meta.client) {
     roll();
   }
 });
 
 // Écouter l'ouverture de la modale sur Desktop
 watch(() => props.isOpen, (newVal) => {
-  if (newVal && hasItems.value) {
+  if (newVal && hasItems.value && import.meta.client) {
     roll();
   }
 });

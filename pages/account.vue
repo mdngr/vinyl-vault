@@ -1,7 +1,7 @@
 <template>
   <div class="account-page">
     <header class="page-header">
-      <button class="btn-back desktop-only" @click="$router.push('/collection')">
+      <button class="btn-back desktop-only" @click="navigateTo('/collection')">
         ← Retour à la collection
       </button>
       <h2>Mon Compte</h2>
@@ -210,8 +210,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useAuthStore } from '../stores/auth.js';
 import { useCollectionStore } from '../stores/collection.js';
 import DiscogsImportModal from '../components/DiscogsImportModal.vue';
@@ -223,7 +222,6 @@ useHead({
   ]
 });
 
-const router = useRouter();
 const authStore = useAuthStore();
 const collectionStore = useCollectionStore();
 const { $supabase } = useNuxtApp();
@@ -264,7 +262,7 @@ const userCity = computed(() => userProfile.value.city || authStore.user?.user_m
 
 const userAvatarLetter = computed(() => {
   if (userProfile.value.first_name) return userProfile.value.first_name.charAt(0).toUpperCase();
-  if (userEmail.value) return userEmail.value.charAt(0).toUpperCase();
+  if (userEmail.value && userEmail.value !== 'Utilisateur') return userEmail.value.charAt(0).toUpperCase();
   return '👤';
 });
 
@@ -292,6 +290,16 @@ async function fetchUserProfile() {
   }
 }
 
+// Réagir quand l'utilisateur se connecte/charge
+watch(() => authStore.user, (newUser) => {
+  if (newUser?.id) {
+    fetchUserProfile();
+    if (collectionStore.items.length === 0) {
+      collectionStore.fetchItems();
+    }
+  }
+}, { immediate: true });
+
 function openEditProfileModal() {
   const meta = authStore.user?.user_metadata || {};
   editFirstName.value = userProfile.value.first_name || meta.first_name || '';
@@ -314,14 +322,12 @@ async function saveProfile() {
       updated_at: new Date().toISOString()
     };
 
-    // 1. Mettre à jour la table profiles
     const { error: profileError } = await $supabase
       .from('profiles')
       .upsert(updates);
 
     if (profileError) throw profileError;
 
-    // 2. Mettre à jour les métadonnées auth.user
     await $supabase.auth.updateUser({
       data: {
         first_name: editFirstName.value.trim(),
@@ -398,8 +404,11 @@ async function resetPassword() {
 async function handleLogout() {
   if (confirm("Voulez-vous vraiment vous déconnecter ?")) {
     try {
+      if (collectionStore.clearMemory) {
+        collectionStore.clearMemory();
+      }
       await authStore.signOut();
-      router.push('/');
+      navigateTo('/');
     } catch (err) {
       console.error("Erreur déconnexion :", err);
       alert("Impossible de vous déconnecter : " + err.message);
@@ -444,7 +453,12 @@ function exportCollection() {
 }
 
 onMounted(() => {
-  fetchUserProfile();
+  if (authStore.user?.id) {
+    fetchUserProfile();
+    if (collectionStore.items.length === 0) {
+      collectionStore.fetchItems();
+    }
+  }
 });
 </script>
 

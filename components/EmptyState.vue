@@ -10,7 +10,7 @@
     <button 
       v-if="config.actionLabel" 
       class="btn btn-primary btn-action" 
-      @click="$emit('action')"
+      @click="$emit('action', config.actionType)"
     >
       {{ config.actionLabel }}
     </button>
@@ -23,50 +23,67 @@ import { computed } from 'vue';
 const props = defineProps({
   showWishlistOnly: { type: Boolean, default: false },
   searchQuery: { type: String, default: '' },
-  activeTypeFilter: { type: String, default: 'all' }
+  activeTypeFilter: { type: String, default: 'all' },
+  // Nombre total d'éléments de l'utilisateur (sans aucun filtre appliqué)
+  totalItemsCount: { type: Number, default: 0 }
 });
 
 defineEmits(['action']);
 
 const config = computed(() => {
-  // 1. Recherche sans résultat
+  // 1. Recherche par mot-clé sans résultat
   if (props.searchQuery) {
     return {
       emoji: '🔍',
       title: 'Aucun résultat trouvé',
-      description: `Impossible de trouver "${props.searchQuery}". Essaie avec un autre mot-clé ou ajoute cette œuvre à ta bibliothèque.`,
-      actionLabel: 'Ajouter cette œuvre ➕'
+      description: `Impossible de trouver "${props.searchQuery}". Essaie avec d'autres termes ou ajoute cette œuvre à ta médiathèque.`,
+      actionLabel: 'Ajouter cette œuvre ➕',
+      actionType: 'add'
     };
   }
 
-  // 2. Wishlist vide
+  // 2. Wishlist vide (alors qu'il y a déjà de la musique/des livres/films en collection)
   if (props.showWishlistOnly) {
     return {
       emoji: '✨',
       title: 'Ta wishlist est vide',
       description: 'Repère des vinyles, livres ou films qui te font envie et ajoute-les ici pour garder une trace de tes futures pépites.',
-      actionLabel: 'Chercher des idées 💡'
+      actionLabel: 'Rechercher une pépite 💡',
+      actionType: 'search'
     };
   }
 
-  // 3. Catégorie spécifique vide (ex: Vinyles)
-  if (props.activeTypeFilter !== 'all') {
-    const labels = { vinyl: 'vinyle', book: 'livre', movie: 'film' };
+  // 3. Catégorie spécifique vide mais la collection globale contient des choses (ex: possède des vinyles mais aucun livre)
+  if (props.activeTypeFilter !== 'all' && props.totalItemsCount > 0) {
+    const labels = { vinyl: 'œuvre musicale', book: 'livre', movie: 'film' };
     const label = labels[props.activeTypeFilter] || 'élément';
     return {
       emoji: '📦',
-      title: `Aucun ${label} pour le moment`,
-      description: `Tu n'as pas encore ajouté de ${label} dans ta collection.`,
-      actionLabel: `Ajouter un ${label} ➕`
+      title: `Aucun ${label} dans ta collection`,
+      description: `Tu n'as pas encore répertorié de ${label}. Clique ci-dessous pour enrichir cette section.`,
+      actionLabel: `Ajouter un ${label} ➕`,
+      actionType: 'add'
     };
   }
 
-  // 4. Collection totalement vide (Premier lancement)
+  // 4. PREMIER LANCEMENT : La collection est 100% vierge
+  if (props.totalItemsCount === 0) {
+    return {
+      emoji: '🏛️',
+      title: 'Bienvenue dans ta voûte culturelle !',
+      description: 'Ton espace est encore vide. Scanne le code-barres de ton premier vinyle, livre ou film, ou cherche-le par son nom.',
+      actionLabel: 'Ajouter ma première œuvre 🚀',
+      actionType: 'add'
+    };
+  }
+
+  // 5. Cas général par défaut (ex: combinaison de filtres sans résultat)
   return {
-    emoji: '🏛️',
-    title: 'Bienvenue dans ta voûte culturelle !',
-    description: 'Ton espace est encore vierge. Commence à répertorier tes vinyles, livres et films préférés en scannant leur code-barres ou par recherche.',
-    actionLabel: 'Ajouter ma première œuvre 🚀'
+    emoji: '⚙️',
+    title: 'Aucun élément ne correspond',
+    description: 'Ajuste tes filtres de recherche pour afficher les éléments de ta collection.',
+    actionLabel: 'Réinitialiser les filtres 🔄',
+    actionType: 'reset_filters'
   };
 });
 </script>
@@ -116,8 +133,18 @@ const config = computed(() => {
 }
 
 .btn-action {
-  padding: 10px 20px;
+  padding: 12px 20px;
   font-weight: 600;
+  border-radius: 10px;
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
   box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+  transition: background-color 0.2s ease;
+}
+
+.btn-action:hover {
+  background: #2563eb;
 }
 </style>

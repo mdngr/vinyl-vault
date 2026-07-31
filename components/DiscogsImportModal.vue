@@ -47,14 +47,13 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { useAuthStore } from '../stores/auth';
-import { FORMATS_BY_TYPE } from '../constants/formats.js'
+import { useAuthStore } from '~/stores/auth';
 
 const emit = defineEmits(['close', 'imported']);
 const authStore = useAuthStore();
 const { $supabase } = useNuxtApp();
+const config = useRuntimeConfig();
 
-const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN;
 const parsedRawItems = ref([]);
 const uploading = ref(false);
 const progressCount = ref(0);
@@ -77,7 +76,7 @@ function handleFileUpload(event) {
   reader.readAsText(file);
 }
 
-// Parser CSV robuste (ne tronque pas les noms contenant des espaces ou caractères spéciaux)
+// Parser CSV robuste pour Nuxt
 function parseCSVLine(line) {
   const result = [];
   let current = '';
@@ -107,7 +106,6 @@ function parseDiscogsCSV(csvText) {
   const headers = parseCSVLine(lines[0]);
   const results = [];
 
-  // Détection dynamique des colonnes Discogs
   const artistIdx = headers.findIndex(h => h.toLowerCase() === 'artist');
   const titleIdx = headers.findIndex(h => h.toLowerCase() === 'title');
   const yearIdx = headers.findIndex(h => h.toLowerCase() === 'released' || h.toLowerCase() === 'year');
@@ -120,7 +118,6 @@ function parseDiscogsCSV(csvText) {
     let rawArtist = values[artistIdx] || '';
     let rawTitle = values[titleIdx] || '';
 
-    // Nettoyage de l'artiste : supprime le suffixe d'homonyme Discogs " (2)" tout en préservant le nom complet
     const cleanArtist = rawArtist.replace(/\s*\(\d+\)$/, '').trim();
     const cleanTitle = rawTitle.trim();
 
@@ -138,41 +135,34 @@ function parseDiscogsCSV(csvText) {
 }
 
 function mapDiscogsFormat(rawFormat) {
-  if (!rawFormat) return 'vinyl_lp'
+  if (!rawFormat) return 'vinyl_lp';
   
-  const lower = rawFormat.toLowerCase()
+  const lower = rawFormat.toLowerCase();
 
-  // 1. Vinyle Single (7")
   if (lower.includes('7"') || lower.includes('7 inch') || lower.includes('single')) {
-    return 'vinyl_single'
+    return 'vinyl_single';
   }
-
-  // 2. CD
   if (lower.includes('cd') || lower.includes('compact disc')) {
-    return 'cd'
+    return 'cd';
   }
-
-  // 3. Cassette
   if (lower.includes('cassette') || lower.includes('tape')) {
-    return 'cassette'
+    return 'cassette';
   }
-
-  // 4. Numérique
   if (lower.includes('file') || lower.includes('digital') || lower.includes('mp3') || lower.includes('flac')) {
-    return 'digital_music'
+    return 'digital_music';
   }
 
-  // 5. Par défaut : Vinyle LP (12", 10", Album, LP, ou tout autre vinyle)
-  return 'vinyl_lp'
+  return 'vinyl_lp';
 }
 
 // Recherche de la pochette sur l'API Discogs
 async function fetchCoverFromDiscogs(artist, title) {
   try {
+    const discogsToken = config.public?.discogsToken || '';
     const query = encodeURIComponent(`${artist} ${title}`);
     let url = `https://api.discogs.com/database/search?q=${query}&type=release`;
-    if (DISCOGS_TOKEN) {
-      url += `&token=${DISCOGS_TOKEN}`;
+    if (discogsToken) {
+      url += `&token=${discogsToken}`;
     }
 
     const res = await fetch(url);
@@ -213,7 +203,7 @@ async function processAndImport() {
     });
 
     progressCount.value++;
-    await delay(100);
+    await delay(120);
   }
 
   try {
@@ -223,7 +213,7 @@ async function processAndImport() {
 
     if (error) throw error;
 
-    alert(`Succès : ${itemsToInsert.length} vinyles importés avec leurs titres complets !`);
+    alert(`Succès : ${itemsToInsert.length} vinyles importés dans ta wishlist !`);
     emit('imported');
     emit('close');
   } catch (err) {
@@ -265,6 +255,7 @@ async function processAndImport() {
 .modal-header h3 {
   margin: 0;
   color: #fff;
+  font-size: 1.15rem;
 }
 
 .btn-close {
@@ -325,5 +316,30 @@ async function processAndImport() {
   gap: 10px;
   justify-content: flex-end;
   margin-top: 20px;
+}
+
+.btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #27272a;
+  color: #ffffff;
+  border: 1px solid #3f3f46;
 }
 </style>

@@ -40,7 +40,6 @@
           </div>
 
           <div class="preview-body">
-            <!-- Fausse barre de recherche & filtres -->
             <div class="preview-toolbar">
               <div class="fake-search">🔍 Abbey Road...</div>
               <div class="fake-chips">
@@ -50,7 +49,6 @@
               </div>
             </div>
 
-            <!-- Fausse grille d'œuvres -->
             <div class="preview-grid">
               <div class="preview-item">
                 <div class="preview-cover cover-1">💿</div>
@@ -101,7 +99,6 @@
           </div>
 
           <form @submit.prevent="handleAuth" class="auth-form">
-            <!-- Champs Prénom et Nom (Affichés uniquement à la création de compte) -->
             <div v-if="!isLogin" class="form-row">
               <div class="form-group">
                 <label for="firstName">Prénom</label>
@@ -137,6 +134,7 @@
                 placeholder="nom@exemple.com" 
                 required 
                 autocomplete="email"
+                autocapitalize="off"
               />
             </div>
 
@@ -148,7 +146,7 @@
                 type="password" 
                 placeholder="••••••••" 
                 required 
-                autocomplete="current-password"
+                :autocomplete="isLogin ? 'current-password' : 'new-password'"
               />
             </div>
 
@@ -176,8 +174,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, onMounted, watch } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 
 useHead({
@@ -185,9 +182,8 @@ useHead({
   meta: [
     { name: 'description', content: 'Catalogne tes albums, suis tes pièces rares et garde un œil sur ta discothèque.' }
   ]
-})
+});
 
-const router = useRouter();
 const authStore = useAuthStore();
 const { $supabase } = useNuxtApp();
 
@@ -200,6 +196,19 @@ const password = ref('');
 const loading = ref(false);
 const errorMsg = ref('');
 const successMsg = ref('');
+
+// Redirection si l'utilisateur est déjà authentifié
+watch(() => authStore.user, (user) => {
+  if (user) {
+    navigateTo('/collection');
+  }
+}, { immediate: true });
+
+onMounted(() => {
+  if (authStore.user) {
+    navigateTo('/collection');
+  }
+});
 
 function scrollToAuth() {
   isLogin.value = true;
@@ -215,23 +224,27 @@ async function handleAuth() {
 
   try {
     if (isLogin.value) {
-      await authStore.signIn(email.value, password.value);
-      router.push('/collection');
+      await authStore.signIn(email.value.trim(), password.value);
+      navigateTo('/collection');
     } else {
       const { data, error } = await $supabase.auth.signUp({
-        email: email.value,
+        email: email.value.trim(),
         password: password.value,
         options: {
           data: {
-            first_name: firstName.value,
-            last_name: lastName.value
+            first_name: firstName.value.trim(),
+            last_name: lastName.value.trim()
           }
         }
       });
       if (error) throw error;
-      
-      successMsg.value = 'Compte créé ! Vérifiez votre boîte mail si la confirmation est requise.';
-      isLogin.value = true;
+
+      if (data?.session) {
+        navigateTo('/collection');
+      } else {
+        successMsg.value = 'Compte créé ! Vérifiez votre boîte mail si la confirmation est requise.';
+        isLogin.value = true;
+      }
     }
   } catch (err) {
     errorMsg.value = err.message || "Une erreur est survenue lors de l'authentification.";
@@ -242,7 +255,6 @@ async function handleAuth() {
 </script>
 
 <style scoped>
-/* Conteneur Global */
 .landing-shell {
   min-height: 100vh;
   min-height: 100dvh;
@@ -256,7 +268,6 @@ async function handleAuth() {
   flex-direction: column;
 }
 
-/* Halos lumineux d'arrière-plan */
 .bg-glow {
   position: absolute;
   border-radius: 50%;
@@ -282,7 +293,6 @@ async function handleAuth() {
   right: -100px;
 }
 
-/* Header */
 .landing-header {
   height: auto;
   min-height: 60px;
@@ -327,7 +337,6 @@ async function handleAuth() {
   border-color: #3b82f6;
 }
 
-/* Contenu Principal */
 .landing-content {
   flex: 1;
   position: relative;
@@ -348,7 +357,6 @@ async function handleAuth() {
   }
 }
 
-/* Hero Section */
 .hero-section {
   text-align: left;
 }
@@ -387,7 +395,6 @@ async function handleAuth() {
   max-width: 540px;
 }
 
-/* PREVIEW MAQUETTE APP */
 .app-preview-card {
   background: #18181b;
   border: 1px solid #27272a;
@@ -529,7 +536,6 @@ async function handleAuth() {
   text-overflow: ellipsis;
 }
 
-/* Section Auth / Carte Formulaire */
 .auth-section {
   width: 100%;
 }
@@ -656,7 +662,6 @@ async function handleAuth() {
   color: #6ee7b7;
 }
 
-/* Footer */
 .landing-footer {
   padding: 20px;
   padding-bottom: calc(env(safe-area-inset-bottom) + 16px);

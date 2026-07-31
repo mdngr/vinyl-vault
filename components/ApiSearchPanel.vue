@@ -180,13 +180,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
-import { Html5Qrcode } from 'html5-qrcode';
-
-import { useCollectionStore } from '../stores/collection';
-import { getFormatLabel } from '../constants/formats';
+import { ref, computed, onUnmounted, nextTick } from 'vue';
+import { useCollectionStore } from '~/stores/collection';
+import { getFormatLabel } from '~/constants/formats';
 
 const collectionStore = useCollectionStore();
+const config = useRuntimeConfig();
+
 const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
 
 const searchType = ref('vinyl');
@@ -224,18 +224,20 @@ function getFormatBadgeLabel(type, formatId) {
 }
 
 function getExistingItem(resItem) {
-  const cleanTitle = resItem.title.trim().toLowerCase();
-  const cleanArtist = resItem.artist.trim().toLowerCase();
+  const cleanTitle = (resItem.title || '').trim().toLowerCase();
+  const cleanArtist = (resItem.artist || '').trim().toLowerCase();
 
   return collectionStore.items.find(item => {
-    return item.title.trim().toLowerCase() === cleanTitle &&
-           item.artist.trim().toLowerCase() === cleanArtist &&
+    return (item.title || '').trim().toLowerCase() === cleanTitle &&
+           (item.artist || '').trim().toLowerCase() === cleanArtist &&
            item.type === resItem.type;
   }) || null;
 }
 
 // 📷 CLIC BOUTON SCANNER
 async function handleScanClick() {
+  if (!import.meta.client) return;
+
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     startLiveScanner();
   } else {
@@ -245,11 +247,14 @@ async function handleScanClick() {
 
 // 🔴 SCANNER VIDÉO EN DIRECT
 async function startLiveScanner() {
+  if (!import.meta.client) return;
+
   isScanning.value = true;
   scannerZoomValue.value = 1;
   await nextTick();
 
   try {
+    const { Html5Qrcode } = await import('html5-qrcode');
     html5QrCodeScanner = new Html5Qrcode("interactive-scanner");
     await html5QrCodeScanner.start(
       { facingMode: "environment" },
@@ -270,6 +275,7 @@ async function startLiveScanner() {
 }
 
 function setupScannerZoom() {
+  if (!import.meta.client) return;
   let attempts = 0;
   const interval = setInterval(() => {
     scannerVideoElement = document.querySelector("#interactive-scanner video");
@@ -341,6 +347,7 @@ function stopScanner() {
 
 // 📸 FALLBACK PHOTO : GESTION D'IMAGE AVEC CROPPER
 function handleFileUpload(event) {
+  if (!import.meta.client) return;
   const file = event.target.files[0];
   if (!file) return;
 
@@ -355,9 +362,11 @@ function handleFileUpload(event) {
   event.target.value = '';
 }
 
-function initCropper() {
+async function initCropper() {
+  if (!import.meta.client) return;
   if (cropperInstance) cropperInstance.destroy();
 
+  const { default: Cropper } = await import('cropperjs');
   cropperInstance = new Cropper(cropImageRef.value, {
     viewMode: 1,
     dragMode: 'move',
@@ -389,7 +398,7 @@ function cancelCrop() {
 }
 
 async function confirmCropAndScan() {
-  if (!cropperInstance) return;
+  if (!cropperInstance || !import.meta.client) return;
   loading.value = true;
 
   const canvas = cropperInstance.getCroppedCanvas({
@@ -406,6 +415,7 @@ async function confirmCropAndScan() {
     }
 
     const croppedFile = new File([blob], "barcode-cropped.jpg", { type: "image/jpeg" });
+    const { Html5Qrcode } = await import('html5-qrcode');
     const html5QrCode = new Html5Qrcode("interactive-scanner-hidden");
 
     try {
@@ -427,16 +437,16 @@ onUnmounted(() => {
 });
 
 // 🔍 RECHERCHE API (Discogs / OpenLibrary / TMDB)
-const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN;
-
 async function searchApi() {
   if (!query.value.trim()) return;
   loading.value = true;
   results.value = [];
 
+  const discogsToken = config.public?.discogsToken || 'YOUR_DISCOGS_TOKEN';
+
   try {
     if (searchType.value === 'vinyl') {
-      const endpoint = `https://api.discogs.com/database/search?q=${encodeURIComponent(query.value)}&type=release&token=${DISCOGS_TOKEN || ''}`;
+      const endpoint = `https://api.discogs.com/database/search?q=${encodeURIComponent(query.value)}&type=release&token=${discogsToken}`;
       const res = await fetch(endpoint);
       const data = await res.json();
       

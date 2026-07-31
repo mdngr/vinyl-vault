@@ -2,7 +2,7 @@
   <div class="search-page">
     <header class="page-header">
       <!-- Bouton Retour visible uniquement sur Desktop -->
-      <button class="btn-back desktop-only" @click="$router.push('/collection')">
+      <button class="btn-back desktop-only" @click="navigateTo('/collection')">
         ← Retour à la collection
       </button>
 
@@ -19,10 +19,14 @@
 </template>
 
 <script setup>
+import ApiSearchPanel from '~/components/ApiSearchPanel.vue'
+
 useHead({
   title: 'Ajouter une oeuvre - Culture Vault',
+  meta: [
+    { name: 'description', content: 'Recherchez et ajoutez de nouveaux vinyles, livres ou films à votre médiathèque.' }
+  ]
 })
-import ApiSearchPanel from '../components/ApiSearchPanel.vue';
 </script>
 
 <style scoped>
