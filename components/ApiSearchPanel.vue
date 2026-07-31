@@ -180,9 +180,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { Html5Qrcode } from 'html5-qrcode';
-import Cropper from 'cropperjs';
 
 import { useCollectionStore } from '../stores/collection';
 import { getFormatLabel } from '../constants/formats';
@@ -504,8 +503,6 @@ async function moveToCollection(existingItem) {
 </script>
 
 <style scoped>
-/* 🟢 Importation du CSS de Cropperjs compatible Vite/PWA */
-@import 'cropperjs/dist/cropper.css';
 
 .search-panel { display: flex; flex-direction: column; gap: 16px; }
 .media-type-tabs { display: flex; gap: 8px; }

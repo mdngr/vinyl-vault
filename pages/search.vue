@@ -19,6 +19,9 @@
 </template>
 
 <script setup>
+useHead({
+  title: 'Ajouter une oeuvre - Culture Vault',
+})
 import ApiSearchPanel from '../components/ApiSearchPanel.vue';
 </script>
 

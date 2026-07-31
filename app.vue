@@ -1,13 +1,18 @@
 <template>
   <div id="app">
-    <!-- Contenu de la route actuelle -->
-    <router-view />
+    <!-- 📡 Bandeau d'alerte Hors-Ligne -->
+    <OfflineBanner />
+
+    <!-- 📄 Contenu principal géré par les layouts & pages Nuxt 3 -->
+    <NuxtLayout>
+      <NuxtPage />
+    </NuxtLayout>
 
     <!-- 📱 Tab Bar Mobile Fixe -->
     <nav v-if="authStore.user" class="mobile-tab-bar mobile-only">
       <button 
         class="tab-item" 
-        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'all' }"
+        :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === 'all' }"
         @click="navToCollection('all')"
       >
         <span class="tab-icon">📂</span>
@@ -16,7 +21,7 @@
       
       <button 
         class="tab-item" 
-        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'vinyl' }"
+        :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === 'vinyl' }"
         @click="navToCollection('vinyl')"
       >
         <span class="tab-icon">🎵</span>
@@ -25,7 +30,7 @@
 
       <button 
         class="tab-item" 
-        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'book' }"
+        :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === 'book' }"
         @click="navToCollection('book')"
       >
         <span class="tab-icon">📚</span>
@@ -34,18 +39,17 @@
 
       <button 
         class="tab-item" 
-        :class="{ active: $route.path === '/collection' && collectionStore.activeTypeFilter === 'movie' }"
+        :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === 'movie' }"
         @click="navToCollection('movie')"
       >
         <span class="tab-icon">🎬</span>
         <span class="tab-label">Films</span>
       </button>
 
-
       <button 
         class="tab-item" 
-        :class="{ active: $route.path === '/search' }"
-        @click="$router.push('/search')"
+        :class="{ active: route.path === '/search' }"
+        @click="navigateTo('/search')"
       >
         <span class="tab-icon">➕</span>
         <span class="tab-label">Ajouter</span>
@@ -53,8 +57,8 @@
 
       <button 
         class="tab-item" 
-        :class="{ active: $route.path === '/account' }"
-        @click="$router.push('/account')"
+        :class="{ active: route.path === '/account' }"
+        @click="navigateTo('/account')"
       >
         <span class="tab-icon">👤</span>
         <span class="tab-label">Profil</span>
@@ -64,36 +68,39 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useAuthStore } from './stores/auth';
-import { useCollectionStore } from './stores/collection';
-import { supabase } from './services/supabase';
+import { onMounted } from 'vue'
+import { useAuthStore } from '~/stores/auth'
+import { useCollectionStore } from '~/stores/collection'
 
-const router = useRouter();
-const authStore = useAuthStore();
-const collectionStore = useCollectionStore();
+const route = useRoute()
+const authStore = useAuthStore()
+const collectionStore = useCollectionStore()
 
-// 🔄 Synchronisation active de la session au chargement
+// Initialisation de la session au chargement
 onMounted(async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  authStore.user = session?.user || null;
-
-  // Écoute les changements d'état (connexion, déconnexion)
-  supabase.auth.onAuthStateChange((_event, session) => {
-    authStore.user = session?.user || null;
-  });
-});
+  if (authStore.initializeAuth) {
+    await authStore.initializeAuth()
+  }
+})
 
 function navToCollection(filterType) {
-  collectionStore.activeTypeFilter = filterType;
-  if (router.currentRoute.value.path !== '/collection') {
-    router.push('/collection');
+  collectionStore.activeTypeFilter = filterType
+  if (route.path !== '/collection') {
+    navigateTo('/collection')
   }
 }
 </script>
 
 <style>
+/* Reset & Styles globaux */
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: #121212;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
 /* Masqué par défaut en version Desktop */
 .mobile-tab-bar {
   display: none;
@@ -107,7 +114,6 @@ function navToCollection(filterType) {
     left: 0;
     right: 0;
     
-    /* On fixe la hauteur utile de la barre à 56px + la zone iOS */
     height: calc(56px + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     
@@ -116,7 +122,6 @@ function navToCollection(filterType) {
     border-top: 1px solid #27272a;
     display: flex !important;
     justify-content: space-around;
-    /* Aligne le contenu en haut de la barre pour dégager la zone du bas */
     align-items: flex-start;
     padding-top: 6px;
     z-index: 2000;

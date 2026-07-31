@@ -28,7 +28,7 @@
       <!-- EN-TÊTE DESKTOP -->
       <header class="page-header desktop-only">
         <div class="header-titles">
-          <h2>Ma Médiathèque</h2>
+          <h2>Ma Collection</h2>
           <p class="stats-text">{{ collectionStore.stats }}</p>
         </div>
 
@@ -186,6 +186,9 @@
 </template>
 
 <script setup>
+useHead({
+  title: 'Ma collection - Culture Vault',
+})
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useCollectionStore } from '../stores/collection';
@@ -206,13 +209,18 @@ const showMobileSearch = ref(false);
 const mobileSearchInput = ref(null);
 
 const isListView = ref(false);
-const isMobile = ref(window.innerWidth <= 768);
+const width = ref(0)
+const isMobile = ref(width <= 768);
 
 function handleResize() {
-  isMobile.value = window.innerWidth <= 768;
+  isMobile.value = width <= 768;
 }
 
 onMounted(async () => {
+  width.value = window.innerWidth
+  window.addEventListener('resize', () => {
+    width.value = window.innerWidth
+  })
   window.addEventListener('resize', handleResize);
   await collectionStore.fetchItems();
 });

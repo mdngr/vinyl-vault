@@ -101,6 +101,33 @@
           </div>
 
           <form @submit.prevent="handleAuth" class="auth-form">
+            <!-- Champs Prénom et Nom (Affichés uniquement à la création de compte) -->
+            <div v-if="!isLogin" class="form-row">
+              <div class="form-group">
+                <label for="firstName">Prénom</label>
+                <input 
+                  id="firstName" 
+                  v-model="firstName" 
+                  type="text" 
+                  placeholder="Jean" 
+                  required 
+                  autocomplete="given-name"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="lastName">Nom</label>
+                <input 
+                  id="lastName" 
+                  v-model="lastName" 
+                  type="text" 
+                  placeholder="Dupont" 
+                  required 
+                  autocomplete="family-name"
+                />
+              </div>
+            </div>
+
             <div class="form-group">
               <label for="email">Adresse e-mail</label>
               <input 
@@ -151,13 +178,23 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from '../stores/auth';
+import { useAuthStore } from '~/stores/auth';
+
+useHead({
+  title: 'Gère ta médiathèque - Culture Vault',
+  meta: [
+    { name: 'description', content: 'Catalogne tes albums, suis tes pièces rares et garde un œil sur ta discothèque.' }
+  ]
+})
 
 const router = useRouter();
 const authStore = useAuthStore();
+const { $supabase } = useNuxtApp();
 
 const authSectionRef = ref(null);
 const isLogin = ref(true);
+const firstName = ref('');
+const lastName = ref('');
 const email = ref('');
 const password = ref('');
 const loading = ref(false);
@@ -181,7 +218,18 @@ async function handleAuth() {
       await authStore.signIn(email.value, password.value);
       router.push('/collection');
     } else {
-      await authStore.signUp(email.value, password.value);
+      const { data, error } = await $supabase.auth.signUp({
+        email: email.value,
+        password: password.value,
+        options: {
+          data: {
+            first_name: firstName.value,
+            last_name: lastName.value
+          }
+        }
+      });
+      if (error) throw error;
+      
       successMsg.value = 'Compte créé ! Vérifiez votre boîte mail si la confirmation est requise.';
       isLogin.value = true;
     }
@@ -529,6 +577,12 @@ async function handleAuth() {
   flex-direction: column;
   gap: 16px;
   text-align: left;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .form-group {

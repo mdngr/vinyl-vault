@@ -12,21 +12,29 @@
       <div class="account-card profile-card">
         <div class="profile-main">
           <div class="user-avatar">
-            {{ userEmail ? userEmail.charAt(0).toUpperCase() : '👤' }}
+            {{ userAvatarLetter }}
           </div>
           
           <div class="user-info">
-            <h3>{{ userEmail }}</h3>
+            <h3>{{ fullName }}</h3>
+            <p class="user-email">{{ userEmail }}</p>
+            <p v-if="userCity" class="user-city">📍 {{ userCity }}</p>
             <p class="user-id" :title="userId">
               ID : <code>{{ truncatedUserId }}</code>
             </p>
           </div>
         </div>
 
-        <button class="btn-share-link" @click="copyShareLink">
-          <span class="share-icon">🔗</span>
-          <span>Copier le lien de ma collection</span>
-        </button>
+        <div class="profile-actions-row">
+          <button class="btn-action btn-secondary" @click="openEditProfileModal">
+            ✏️ Modifier mes informations
+          </button>
+
+          <button class="btn-share-link" @click="copyShareLink">
+            <span class="share-icon">🔗</span>
+            <span>Copier le lien de ma collection</span>
+          </button>
+        </div>
       </div>
 
       <!-- CARTE STATISTIQUES GLOBALES -->
@@ -116,6 +124,82 @@
       </div>
     </div>
 
+    <!-- 🎁 MODALE MODIFICATION DU PROFIL -->
+    <div v-if="isEditModalOpen" class="modal-overlay" @click.self="isEditModalOpen = false">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Modifier mes informations</h3>
+          <button class="btn-close" @click="isEditModalOpen = false">✕</button>
+        </div>
+
+        <form @submit.prevent="saveProfile" class="modal-body">
+          <div class="form-group">
+            <label>Adresse e-mail (non modifiable)</label>
+            <input 
+              type="email" 
+              :value="userEmail" 
+              disabled 
+              class="input-disabled"
+            />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="editFirstName">Prénom</label>
+              <input 
+                id="editFirstName" 
+                v-model="editFirstName" 
+                type="text" 
+                placeholder="Ton prénom"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="editLastName">Nom</label>
+              <input 
+                id="editLastName" 
+                v-model="editLastName" 
+                type="text" 
+                placeholder="Ton nom"
+                required
+              />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="editCity">Ville</label>
+            <input 
+              id="editCity" 
+              v-model="editCity" 
+              type="text" 
+              placeholder="Ex: Paris, Lyon, Angers..."
+            />
+          </div>
+
+          <p v-if="editErrorMsg" class="error-msg">{{ editErrorMsg }}</p>
+
+          <div class="modal-actions">
+            <button 
+              type="button" 
+              class="btn-action btn-secondary" 
+              @click="isEditModalOpen = false" 
+              :disabled="savingProfile"
+            >
+              Annuler
+            </button>
+            <button 
+              type="submit" 
+              class="btn-action btn-primary" 
+              :disabled="savingProfile"
+            >
+              {{ savingProfile ? 'Enregistrement...' : 'Enregistrer' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- 🎁 MODALE IMPORT DISCOGS -->
     <DiscogsImportModal 
       v-if="isImportModalOpen" 
@@ -126,27 +210,139 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from '../stores/auth';
-import { useCollectionStore } from '../stores/collection';
-import { supabase } from '../services/supabase';
+import { useAuthStore } from '../stores/auth.js';
+import { useCollectionStore } from '../stores/collection.js';
 import DiscogsImportModal from '../components/DiscogsImportModal.vue';
+
+useHead({
+  title: 'Mon compte - Culture Vault',
+  meta: [
+    { name: 'description', content: 'Catalogne tes albums, suis tes pièces rares et garde un œil sur ta discothèque.' }
+  ]
+});
 
 const router = useRouter();
 const authStore = useAuthStore();
 const collectionStore = useCollectionStore();
+const { $supabase } = useNuxtApp();
 
 const sendingEmail = ref(false);
 const isImportModalOpen = ref(false);
 
+// État du profil
+const userProfile = ref({
+  first_name: '',
+  last_name: '',
+  city: ''
+});
+
+// Modale d'édition
+const isEditModalOpen = ref(false);
+const editFirstName = ref('');
+const editLastName = ref('');
+const editCity = ref('');
+const savingProfile = ref(false);
+const editErrorMsg = ref('');
+
 const userEmail = computed(() => authStore.user?.email || 'Utilisateur');
 const userId = computed(() => authStore.user?.id || 'Inconnu');
+
+const fullName = computed(() => {
+  if (userProfile.value.first_name || userProfile.value.last_name) {
+    return `${userProfile.value.first_name} ${userProfile.value.last_name}`.trim();
+  }
+  const meta = authStore.user?.user_metadata;
+  if (meta?.first_name || meta?.last_name) {
+    return `${meta.first_name || ''} ${meta.last_name || ''}`.trim();
+  }
+  return userEmail.value;
+});
+
+const userCity = computed(() => userProfile.value.city || authStore.user?.user_metadata?.city || '');
+
+const userAvatarLetter = computed(() => {
+  if (userProfile.value.first_name) return userProfile.value.first_name.charAt(0).toUpperCase();
+  if (userEmail.value) return userEmail.value.charAt(0).toUpperCase();
+  return '👤';
+});
 
 const truncatedUserId = computed(() => {
   if (!userId.value || userId.value === 'Inconnu') return 'Inconnu';
   return `${userId.value.slice(0, 4)}...${userId.value.slice(-4)}`;
 });
+
+// Chargement du profil depuis Supabase
+async function fetchUserProfile() {
+  if (!authStore.user?.id) return;
+  try {
+    const { data, error } = await $supabase
+      .from('profiles')
+      .select('first_name, last_name, city')
+      .eq('id', authStore.user.id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data) {
+      userProfile.value = data;
+    }
+  } catch (err) {
+    console.error('Erreur chargement profil :', err.message);
+  }
+}
+
+function openEditProfileModal() {
+  const meta = authStore.user?.user_metadata || {};
+  editFirstName.value = userProfile.value.first_name || meta.first_name || '';
+  editLastName.value = userProfile.value.last_name || meta.last_name || '';
+  editCity.value = userProfile.value.city || meta.city || '';
+  editErrorMsg.value = '';
+  isEditModalOpen.value = true;
+}
+
+async function saveProfile() {
+  savingProfile.value = true;
+  editErrorMsg.value = '';
+
+  try {
+    const updates = {
+      id: authStore.user.id,
+      first_name: editFirstName.value.trim(),
+      last_name: editLastName.value.trim(),
+      city: editCity.value.trim(),
+      updated_at: new Date().toISOString()
+    };
+
+    // 1. Mettre à jour la table profiles
+    const { error: profileError } = await $supabase
+      .from('profiles')
+      .upsert(updates);
+
+    if (profileError) throw profileError;
+
+    // 2. Mettre à jour les métadonnées auth.user
+    await $supabase.auth.updateUser({
+      data: {
+        first_name: editFirstName.value.trim(),
+        last_name: editLastName.value.trim(),
+        city: editCity.value.trim()
+      }
+    });
+
+    userProfile.value = {
+      first_name: editFirstName.value.trim(),
+      last_name: editLastName.value.trim(),
+      city: editCity.value.trim()
+    };
+
+    isEditModalOpen.value = false;
+  } catch (err) {
+    editErrorMsg.value = err.message || 'Impossible de sauvegarder les modifications.';
+  } finally {
+    savingProfile.value = false;
+  }
+}
 
 // Stats globales
 const collectionItemsCount = computed(() => {
@@ -187,7 +383,7 @@ async function resetPassword() {
   
   sendingEmail.value = true;
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(authStore.user.email, {
+    const { error } = await $supabase.auth.resetPasswordForEmail(authStore.user.email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     if (error) throw error;
@@ -201,8 +397,13 @@ async function resetPassword() {
 
 async function handleLogout() {
   if (confirm("Voulez-vous vraiment vous déconnecter ?")) {
-    await authStore.logout();
-    router.push('/');
+    try {
+      await authStore.signOut();
+      router.push('/');
+    } catch (err) {
+      console.error("Erreur déconnexion :", err);
+      alert("Impossible de vous déconnecter : " + err.message);
+    }
   }
 }
 
@@ -213,12 +414,10 @@ function copyShareLink() {
   alert("Lien de votre collection copié !");
 }
 
-// Rafraîchir le store après l'import CSV
 async function handleImportSuccess() {
   await collectionStore.fetchItems();
 }
 
-// Exportation de la médiathèque au format CSV
 function exportCollection() {
   if (collectionStore.items.length === 0) return;
 
@@ -243,6 +442,10 @@ function exportCollection() {
   link.click();
   document.body.removeChild(link);
 }
+
+onMounted(() => {
+  fetchUserProfile();
+});
 </script>
 
 <style scoped>
@@ -341,6 +544,18 @@ function exportCollection() {
   text-overflow: ellipsis;
 }
 
+.user-email {
+  margin: 2px 0 0 0;
+  font-size: 0.85rem;
+  color: #a1a1aa;
+}
+
+.user-city {
+  margin: 2px 0 0 0;
+  font-size: 0.8rem;
+  color: #60a5fa;
+}
+
 .user-id {
   margin: 4px 0 0 0;
   font-size: 0.75rem;
@@ -355,13 +570,19 @@ function exportCollection() {
   font-family: monospace;
 }
 
+.profile-actions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .btn-share-link {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 10px 14px;
+  padding: 12px 14px;
   background: #27272a;
   border: 1px solid #3f3f46;
   border-radius: 10px;
@@ -375,10 +596,6 @@ function exportCollection() {
 .btn-share-link:hover {
   background: #3f3f46;
   border-color: #52525b;
-}
-
-.btn-share-link:active {
-  transform: scale(0.98);
 }
 
 .share-icon {
@@ -397,7 +614,6 @@ function exportCollection() {
   font-size: 1.05rem;
 }
 
-/* GRILLE STATS (Desktop) */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -431,7 +647,6 @@ function exportCollection() {
   text-transform: uppercase;
 }
 
-/* REPARTITION PAR TYPE */
 .stats-types-list {
   display: flex;
   flex-direction: column;
@@ -476,7 +691,6 @@ function exportCollection() {
   text-align: right;
 }
 
-/* LISTE DES OUTILS DONNÉES */
 .tools-list {
   display: flex;
   flex-direction: column;
@@ -488,7 +702,6 @@ function exportCollection() {
   font-size: 1.1rem;
 }
 
-/* BOUTONS ACTIONS */
 .btn-action {
   width: 100%;
   padding: 14px;
@@ -507,6 +720,15 @@ function exportCollection() {
 .btn-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
 }
 
 .btn-secondary {
@@ -529,6 +751,106 @@ function exportCollection() {
 }
 
 .desktop-only { display: inline-flex; }
+
+/* MODALE STYLES */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2500;
+  padding: 16px;
+}
+
+.modal-content {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 440px;
+  width: 100%;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.btn-close {
+  background: transparent;
+  border: none;
+  color: #71717a;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #a1a1aa;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px 12px;
+  background: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.form-group input:focus:not(.input-disabled) {
+  border-color: #3b82f6;
+}
+
+.input-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #121212 !important;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.error-msg {
+  color: #f87171;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
 
 /* 📱 AJUSTEMENTS SMARTPHONE */
 @media (max-width: 768px) {
@@ -593,6 +915,10 @@ function exportCollection() {
   .btn-action {
     padding: 16px;
     font-size: 1rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
   }
 }
 </style>
