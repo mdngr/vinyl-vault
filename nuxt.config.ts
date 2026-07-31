@@ -21,7 +21,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-      supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY
+      supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      discogsToken: import.meta.env.VITE_DISCOGS_TOKEN
     }
   },
 

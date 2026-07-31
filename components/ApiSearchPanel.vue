@@ -188,6 +188,33 @@ const placeholderText = computed(() => {
   return 'Titre du film...';
 });
 
+// Normalisation des formats renvoyés par l'API Discogs
+function mapDiscogsFormat(formatsArray) {
+  if (!formatsArray || !Array.isArray(formatsArray) || formatsArray.length === 0) {
+    return 'vinyl_lp';
+  }
+
+  const rawString = formatsArray.map(f => typeof f === 'string' ? f : (f.name || '') + ' ' + (f.descriptions || []).join(' ')).join(' ').toLowerCase();
+
+  if (rawString.includes('7"') || rawString.includes('7 inch') || rawString.includes('single')) {
+    return 'vinyl_single';
+  }
+  if (rawString.includes('10"')) {
+    return 'vinyl_10';
+  }
+  if (rawString.includes('cd') || rawString.includes('compact disc')) {
+    return 'cd';
+  }
+  if (rawString.includes('cassette') || rawString.includes('tape')) {
+    return 'cassette';
+  }
+  if (rawString.includes('file') || rawString.includes('digital') || rawString.includes('mp3') || rawString.includes('flac')) {
+    return 'digital_music';
+  }
+
+  return 'vinyl_lp';
+}
+
 function getFormatBadgeLabel(type, formatId) {
   return getFormatLabel(type, formatId) || 'Format standard';
 }
@@ -197,6 +224,10 @@ function getExistingItem(resItem) {
   const cleanArtist = (resItem.artist || '').trim().toLowerCase();
 
   return collectionStore.items.find(item => {
+    // Vérification par ID Discogs prioritaire
+    if (resItem.discogs_id && item.discogs_id === resItem.discogs_id) {
+      return true;
+    }
     return (item.title || '').trim().toLowerCase() === cleanTitle &&
            (item.artist || '').trim().toLowerCase() === cleanArtist &&
            item.type === resItem.type;
@@ -355,12 +386,13 @@ async function searchApi() {
       
       results.value = (data.results || []).slice(0, 12).map(item => ({
         id: item.id,
+        discogs_id: item.id,
         title: item.title.includes(' - ') ? item.title.split(' - ')[1] : item.title,
         artist: item.title.includes(' - ') ? item.title.split(' - ')[0] : 'Artiste inconnu',
         year: item.year || '',
         cover: item.cover_image || item.thumb,
         type: 'vinyl',
-        detectedFormat: 'vinyl_lp'
+        detectedFormat: mapDiscogsFormat(item.format)
       }));
     } else if (searchType.value === 'book') {
       const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query.value)}&limit=12`);
@@ -403,6 +435,7 @@ async function addItem(item, isWishlist) {
     type: item.type,
     format: item.detectedFormat,
     cover: item.cover,
+    discogs_id: item.discogs_id || null,
     is_wishlist: isWishlist
   });
 }

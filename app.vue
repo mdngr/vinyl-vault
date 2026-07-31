@@ -8,8 +8,12 @@
       <NuxtPage />
     </NuxtLayout>
 
-    <!-- 📱 Tab Bar Mobile Fixe -->
-    <nav v-if="authStore.user" class="mobile-tab-bar mobile-only">
+    <!-- 📱 Tab Bar Mobile Flottante avec Masquage au Scroll -->
+    <nav 
+      v-if="authStore.user" 
+      class="mobile-tab-bar mobile-only"
+      :class="{ 'is-hidden': isTabBarHidden }"
+    >
       <button 
         class="tab-item" 
         :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === 'all' }"
@@ -68,7 +72,7 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { useCollectionStore } from '~/stores/collection'
 
@@ -76,10 +80,39 @@ const route = useRoute()
 const authStore = useAuthStore()
 const collectionStore = useCollectionStore()
 
-// Initialisation de la session au chargement
+// Gestion du scroll pour masquer la barre
+const isTabBarHidden = ref(false)
+let lastScrollY = 0
+
+function handleScroll() {
+  if (!import.meta.client) return
+  
+  const currentScrollY = window.scrollY
+
+  // On ne masque la barre que si on a dépassé 60px de défilement (évite les petits rebonds au sommet)
+  if (currentScrollY > 60 && currentScrollY > lastScrollY) {
+    isTabBarHidden.value = true // Scroll vers le bas -> Masquer
+  } else {
+    isTabBarHidden.value = false // Scroll vers le haut / arrêt -> Réafficher
+  }
+
+  lastScrollY = currentScrollY
+}
+
+// Initialisation au chargement
 onMounted(async () => {
   if (authStore.initializeAuth) {
     await authStore.initializeAuth()
+  }
+
+  if (import.meta.client) {
+    window.addEventListener('scroll', handleScroll, { passive: true })
+  }
+})
+
+onUnmounted(() => {
+  if (import.meta.client) {
+    window.removeEventListener('scroll', handleScroll)
   }
 })
 
@@ -108,46 +141,75 @@ html, body {
 
 /* Visibilité forcée en version Mobile (<= 768px) */
 @media (max-width: 768px) {
+  /* Évite que le bas des pages ne soit masqué sous la barre flottante */
+  body {
+    padding-bottom: calc(85px + env(safe-area-inset-bottom, 0px));
+  }
+
   .mobile-tab-bar {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    right: 12px;
     
-    height: calc(56px + env(safe-area-inset-bottom, 0px));
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    height: 62px;
+    box-sizing: border-box;
     
-    background: rgba(24, 24, 27, 0.98);
-    backdrop-filter: blur(12px);
-    border-top: 1px solid #27272a;
+    background: rgba(24, 24, 27, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 36px;
+    
     display: flex !important;
     justify-content: space-around;
-    align-items: flex-start;
-    padding-top: 6px;
+    align-items: center;
+    padding: 0 6px;
     z-index: 2000;
+    
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    
+    /* Animation fluide de glissement */
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  /* État masqué lors du scroll vers le bas */
+  .mobile-tab-bar.is-hidden {
+    transform: translateY(calc(100% + 24px));
+    opacity: 0;
+    pointer-events: none;
   }
 
   .tab-item {
     background: transparent;
-    border: none;
-    color: #71717a;
+    border: 1px solid transparent;
+    color: #a1a1aa;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 2px;
-    font-size: 0.65rem;
+    font-size: 0.6rem;
+    font-weight: 600;
     cursor: pointer;
     flex: 1;
+    height: 48px;
+    border-radius: 24px;
     padding: 0;
+    transition: all 0.2s ease;
   }
 
   .tab-icon {
-    font-size: 1.1rem;
+    font-size: 1.05rem;
+    line-height: 1;
   }
 
   .tab-item.active {
-    color: #3b82f6;
-    font-weight: 700;
+    background: #3b82f6;
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
   }
 }
 </style>

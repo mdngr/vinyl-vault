@@ -19,9 +19,9 @@
             <h3>{{ fullName }}</h3>
             <p class="user-email">{{ userEmail }}</p>
             <p v-if="userCity" class="user-city">📍 {{ userCity }}</p>
-            <p class="user-id" :title="userId">
+            <!-- <p class="user-id" :title="userId">
               ID : <code>{{ truncatedUserId }}</code>
-            </p>
+            </p> -->
           </div>
         </div>
 

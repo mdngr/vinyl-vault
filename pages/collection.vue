@@ -28,13 +28,21 @@
       <!-- EN-TÊTE DESKTOP -->
       <header class="page-header desktop-only">
         <div class="header-titles">
-          <h2>Ma Collection</h2>
+          <h2>Ma Collection {{ activeTypeTitle }}</h2>
           <p class="stats-text">{{ collectionStore.stats }}</p>
         </div>
 
         <div class="header-actions">
           <button class="btn btn-lucky" @click="isLuckyPickOpen = true">
             🎲 Lucky Pick
+          </button>
+
+          <button 
+            class="btn btn-wishlist" 
+            :class="{ active: collectionStore.showWishlistOnly }"
+            @click="collectionStore.showWishlistOnly = !collectionStore.showWishlistOnly"
+          >
+            ✨ Wishlist
           </button>
 
           <button class="btn btn-primary" @click="navigateTo('/search')">
@@ -52,8 +60,11 @@
         <ApiSearchPanel />
       </div>
 
-      <!-- BARRE DE FILTRES ET TRI -->
-      <section class="toolbar">
+      <!-- BARRE DE FILTRES ET TRI (Fixe et réactive au scroll sur Mobile) -->
+      <section 
+        class="toolbar"
+        :class="{ 'is-hidden-mobile': isMobile && isToolbarHidden }"
+      >
         <div class="filters-group">
           <!-- 🔍 DESKTOP : Input classique -->
           <input 
@@ -72,15 +83,9 @@
             🔍 {{ collectionStore.searchQuery ? collectionStore.searchQuery : '' }}
           </button>
 
-          <select v-model="collectionStore.activeTypeFilter" class="select-chip desktop-only">
-            <option value="all">📂 Tout</option>
-            <option value="vinyl">🎵 Musique</option>
-            <option value="book">📚 Livres</option>
-            <option value="movie">🎬 Films</option>
-          </select>
-
+          <!-- 📱 MOBILE : Bouton Wishlist dédié -->
           <button 
-            class="chip-btn" 
+            class="chip-btn mobile-only" 
             :class="{ active: collectionStore.showWishlistOnly }"
             @click="collectionStore.showWishlistOnly = !collectionStore.showWishlistOnly"
           >
@@ -146,14 +151,14 @@
       </div>
 
       <!-- 2. Aucun résultat trouvé (Collection vide ou filtre sans résultat) -->
-      <div v-else-if="!collectionStore.filteredItems || collectionStore.filteredItems.length === 0" class="empty-state">
-        <div class="empty-icon">📦</div>
-        <p>Aucune œuvre ne correspond à votre recherche ou votre collection est vide.</p>
-        
-        <button class="btn-add-content" @click="handleAddContentClick">
-          ➕ Ajouter une œuvre
-        </button>
-      </div>
+      <EmptyState 
+        v-else-if="!collectionStore.filteredItems || collectionStore.filteredItems.length === 0"
+        :search-query="collectionStore.searchQuery"
+        :show-wishlist-only="collectionStore.showWishlistOnly"
+        :active-type-filter="collectionStore.activeTypeFilter"
+        :total-items-count="collectionStore.items.length"
+        @action="handleEmptyStateAction"
+      />
 
       <div 
         v-else 
@@ -167,6 +172,45 @@
           :is-list-view="isListView"
           @delete="deleteItem"
         />
+      </div>
+
+      <!-- 🖥️ DESKTOP : BARRE FLOTTANTE DE SÉLECTION DE CONTENU EN BAS DE L'ÉCRAN -->
+      <div class="floating-type-bar desktop-only">
+        <button 
+          class="floating-tab" 
+          :class="{ active: collectionStore.activeTypeFilter === 'all' }"
+          @click="collectionStore.activeTypeFilter = 'all'"
+        >
+          <span class="tab-emoji">📂</span>
+          <span class="tab-title">Tout</span>
+        </button>
+
+        <button 
+          class="floating-tab" 
+          :class="{ active: collectionStore.activeTypeFilter === 'vinyl' }"
+          @click="collectionStore.activeTypeFilter = 'vinyl'"
+        >
+          <span class="tab-emoji">🎵</span>
+          <span class="tab-title">Musique</span>
+        </button>
+
+        <button 
+          class="floating-tab" 
+          :class="{ active: collectionStore.activeTypeFilter === 'book' }"
+          @click="collectionStore.activeTypeFilter = 'book'"
+        >
+          <span class="tab-emoji">📚</span>
+          <span class="tab-title">Livres</span>
+        </button>
+
+        <button 
+          class="floating-tab" 
+          :class="{ active: collectionStore.activeTypeFilter === 'movie' }"
+          @click="collectionStore.activeTypeFilter = 'movie'"
+        >
+          <span class="tab-emoji">🎬</span>
+          <span class="tab-title">Films</span>
+        </button>
       </div>
 
       <!-- MODALE DESKTOP LUCKY PICK -->
@@ -186,13 +230,28 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 import { useCollectionStore } from '~/stores/collection';
 import ItemCard from '~/components/ItemCard.vue';
 import ApiSearchPanel from '~/components/ApiSearchPanel.vue';
 import LuckyPickModal from '~/components/LuckyPickModal.vue';
 import SortModal from '~/components/SortModal.vue';
+import EmptyState from '~/components/EmptyState.vue';
+
+function handleEmptyStateAction(actionType) {
+  if (actionType === 'add' || actionType === 'search') {
+    if (isMobile.value) {
+      navigateTo('/search');
+    } else {
+      isSearchOpen.value = true;
+    }
+  } else if (actionType === 'reset_filters') {
+    collectionStore.searchQuery = '';
+    collectionStore.activeTypeFilter = 'all';
+    collectionStore.showWishlistOnly = false;
+  }
+}
 
 useHead({
   title: 'Ma collection - Culture Vault',
@@ -214,6 +273,46 @@ const mobileSearchInput = ref(null);
 const isListView = ref(false);
 const isMobile = ref(false);
 
+// Gestion du scroll mobile pour masquer / réafficher la barre de filtres
+const isToolbarHidden = ref(false);
+let lastScrollY = 0;
+
+function handleScroll() {
+  if (!import.meta.client || !isMobile.value) return;
+
+  const currentScrollY = window.scrollY;
+
+  // 1. Toujours afficher proche du haut de page
+  if (currentScrollY <= 10) {
+    isToolbarHidden.value = false;
+    lastScrollY = currentScrollY;
+    return;
+  }
+
+  // 2. Détection dynamique du sens de défilement
+  const delta = currentScrollY - lastScrollY;
+
+  if (Math.abs(delta) > 5) {
+    if (delta > 0) {
+      // Scroll vers le bas -> Cacher vers le haut
+      isToolbarHidden.value = true;
+    } else {
+      // Scroll vers le haut -> Réafficher immédiatement
+      isToolbarHidden.value = false;
+    }
+    lastScrollY = currentScrollY;
+  }
+}
+
+const activeTypeTitle = computed(() => {
+  const map = {
+    vinyl: '· Musique',
+    book: '· Livres',
+    movie: '· Films'
+  };
+  return map[collectionStore.activeTypeFilter] || '';
+});
+
 function handleResize() {
   if (import.meta.client) {
     isMobile.value = window.innerWidth <= 768;
@@ -224,6 +323,7 @@ onMounted(async () => {
   handleResize();
   if (import.meta.client) {
     window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', handleScroll, { passive: true });
   }
   await collectionStore.fetchItems();
 });
@@ -231,6 +331,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (import.meta.client) {
     window.removeEventListener('resize', handleResize);
+    window.removeEventListener('scroll', handleScroll);
   }
 });
 
@@ -253,14 +354,6 @@ function toggleMobileSearch() {
   }
 }
 
-function handleAddContentClick() {
-  if (isMobile.value) {
-    navigateTo('/search');
-  } else {
-    isSearchOpen.value = true;
-  }
-}
-
 async function deleteItem(id) {
   if (confirm("Voulez-vous vraiment supprimer cet élément ?")) {
     await collectionStore.deleteItem(id);
@@ -276,6 +369,7 @@ async function deleteItem(id) {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
+  padding-bottom: 90px;
 }
 
 /* DESKTOP / MOBILE DISPLAY UTILS */
@@ -287,7 +381,7 @@ async function deleteItem(id) {
   .mobile-only { display: flex !important; }
   
   .collection-page { 
-    padding-top: max(12px, env(safe-area-inset-top));
+    padding-top: calc(54px + max(12px, env(safe-area-inset-top)));
     padding-left: 12px;
     padding-right: 12px;
     padding-bottom: calc(75px + env(safe-area-inset-bottom));
@@ -349,6 +443,7 @@ async function deleteItem(id) {
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .btn-primary {
@@ -357,10 +452,28 @@ async function deleteItem(id) {
   border: none;
 }
 
+.btn-secondary {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #a1a1aa;
+}
+
 .btn-lucky {
   background: rgba(139, 92, 246, 0.2);
   border: 1px solid rgba(139, 92, 246, 0.4);
   color: #c084fc;
+}
+
+.btn-wishlist {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #a1a1aa;
+}
+
+.btn-wishlist.active {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
 }
 
 .search-section {
@@ -459,16 +572,17 @@ async function deleteItem(id) {
   white-space: nowrap;
 }
 
-.select-chip, .chip-btn {
+.chip-btn {
   background: #18181b;
   border: 1px solid #27272a;
   color: #a1a1aa;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border-radius: 8px;
   font-size: 0.8rem;
   white-space: nowrap;
   cursor: pointer;
   flex-shrink: 0;
+  transition: all 0.2s ease;
 }
 
 .chip-btn.active {
@@ -503,12 +617,92 @@ async function deleteItem(id) {
   color: #fff;
 }
 
-/* 📱 AJUSTEMENTS SMARTPHONE */
+/* 🖥️ BARRE FLOTTANTE DESKTOP (NAVIGATION PAR TYPE) */
+.floating-type-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(24, 24, 27, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 40px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 2000;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.floating-type-bar:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 16px rgba(59, 130, 246, 0.15);
+}
+
+.floating-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #a1a1aa;
+  padding: 8px 18px;
+  border-radius: 30px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.floating-tab:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.floating-tab.active {
+  background: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+}
+
+.tab-emoji {
+  font-size: 1rem;
+}
+
+/* 📱 AJUSTEMENTS ET COMPORTEMENT DE SCROLL SMARTPHONE */
 @media (max-width: 768px) {
   .toolbar {
+    position: fixed;
+    top: calc(8px + env(safe-area-inset-top));
+    left: 12px;
+    right: 12px;
+    width: auto;
+    z-index: 1000;
+    background: rgba(18, 18, 18, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 6px 8px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+    
     flex-direction: row;
     align-items: center;
     gap: 6px;
+
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  /* Masquage de la barre au scroll vers le bas */
+  .toolbar.is-hidden-mobile {
+    transform: translateY(calc(-100% - 20px - env(safe-area-inset-top)));
+    opacity: 0;
+    pointer-events: none;
   }
 
   .filters-group {
@@ -531,49 +725,6 @@ async function deleteItem(id) {
 .items-container.list-view { display: flex; flex-direction: column; gap: 8px; }
 .loading-state { text-align: center; padding: 40px; color: #a1a1aa; }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 48px 20px;
-  text-align: center;
-  color: #a1a1aa;
-  background: #18181b;
-  border: 1px dashed #27272a;
-  border-radius: 12px;
-  margin-top: 10px;
-}
-
-.empty-icon {
-  font-size: 2.2rem;
-}
-
-.empty-state p {
-  font-size: 0.95rem;
-  max-width: 320px;
-  margin: 0;
-}
-
-.btn-add-content {
-  background: #3b82f6;
-  color: #ffffff;
-  border: none;
-  padding: 10px 18px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 6px;
-  transition: background-color 0.2s ease;
-}
-
-.btn-add-content:hover {
-  background: #2563eb;
-}
-
-/* Bouton Lucky Pick compact dans la toolbar mobile */
 .btn-lucky-mobile {
   background: rgba(139, 92, 246, 0.2) !important;
   border-color: rgba(139, 92, 246, 0.4) !important;

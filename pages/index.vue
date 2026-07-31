@@ -178,7 +178,7 @@ import { ref, onMounted, watch } from 'vue';
 import { useAuthStore } from '~/stores/auth';
 
 useHead({
-  title: 'Gère ta médiathèque - Culture Vault',
+  title: 'Culture Vault',
   meta: [
     { name: 'description', content: 'Catalogne tes albums, suis tes pièces rares et garde un œil sur ta discothèque.' }
   ]
