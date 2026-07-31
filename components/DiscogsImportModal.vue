@@ -47,11 +47,12 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { supabase } from '../services/supabase';
 import { useAuthStore } from '../stores/auth';
+import { FORMATS_BY_TYPE } from '../constants/formats.js'
 
 const emit = defineEmits(['close', 'imported']);
 const authStore = useAuthStore();
+const { $supabase } = useNuxtApp();
 
 const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN;
 const parsedRawItems = ref([]);
@@ -76,6 +77,28 @@ function handleFileUpload(event) {
   reader.readAsText(file);
 }
 
+// Parser CSV robuste (ne tronque pas les noms contenant des espaces ou caractères spéciaux)
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim().replace(/^"|"$/g, ''));
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim().replace(/^"|"$/g, ''));
+  return result;
+}
+
 // Extraction des lignes du CSV Discogs
 function parseDiscogsCSV(csvText) {
   const lines = csvText.split(/\r\n|\n/);
@@ -84,21 +107,29 @@ function parseDiscogsCSV(csvText) {
   const headers = parseCSVLine(lines[0]);
   const results = [];
 
+  // Détection dynamique des colonnes Discogs
+  const artistIdx = headers.findIndex(h => h.toLowerCase() === 'artist');
+  const titleIdx = headers.findIndex(h => h.toLowerCase() === 'title');
+  const yearIdx = headers.findIndex(h => h.toLowerCase() === 'released' || h.toLowerCase() === 'year');
+  const formatIdx = headers.findIndex(h => h.toLowerCase() === 'format');
+
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
     const values = parseCSVLine(lines[i]);
     
-    const row = {};
-    headers.forEach((h, index) => {
-      row[h.trim()] = values[index] ? values[index].trim() : '';
-    });
+    let rawArtist = values[artistIdx] || '';
+    let rawTitle = values[titleIdx] || '';
 
-    if (row['Artist'] && row['Title']) {
+    // Nettoyage de l'artiste : supprime le suffixe d'homonyme Discogs " (2)" tout en préservant le nom complet
+    const cleanArtist = rawArtist.replace(/\s*\(\d+\)$/, '').trim();
+    const cleanTitle = rawTitle.trim();
+
+    if (cleanArtist && cleanTitle) {
       results.push({
-        artist: row['Artist'],
-        title: row['Title'],
-        year: row['Released'] || null,
-        formatRaw: row['Format'] || ''
+        artist: cleanArtist,
+        title: cleanTitle,
+        year: values[yearIdx] || null,
+        formatRaw: values[formatIdx] || ''
       });
     }
   }
@@ -106,28 +137,36 @@ function parseDiscogsCSV(csvText) {
   return results;
 }
 
-function parseCSVLine(text) {
-  const regex = /(?!\s*$)\s*(?:'([^'\\]*(?:\\[\S\s][^'\\]*)*)'|"([^"\\]*(?:\\[\S\s][^"\\]*)*)"|([^,\s"]*))\s*(?:,|$)/g;
-  const arr = [];
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index === regex.lastIndex) regex.lastIndex++;
-    arr.push(match[1] || match[2] || match[3] || '');
-  }
-  return arr;
-}
-
 function mapDiscogsFormat(rawFormat) {
-  if (!rawFormat) return 'lp';
-  const lower = rawFormat.toLowerCase();
-  if (lower.includes('7"')) return '7inch';
-  if (lower.includes('12"')) return '12inch';
-  if (lower.includes('cd')) return 'cd';
-  if (lower.includes('cassette')) return 'tape';
-  return 'lp';
+  if (!rawFormat) return 'vinyl_lp'
+  
+  const lower = rawFormat.toLowerCase()
+
+  // 1. Vinyle Single (7")
+  if (lower.includes('7"') || lower.includes('7 inch') || lower.includes('single')) {
+    return 'vinyl_single'
+  }
+
+  // 2. CD
+  if (lower.includes('cd') || lower.includes('compact disc')) {
+    return 'cd'
+  }
+
+  // 3. Cassette
+  if (lower.includes('cassette') || lower.includes('tape')) {
+    return 'cassette'
+  }
+
+  // 4. Numérique
+  if (lower.includes('file') || lower.includes('digital') || lower.includes('mp3') || lower.includes('flac')) {
+    return 'digital_music'
+  }
+
+  // 5. Par défaut : Vinyle LP (12", 10", Album, LP, ou tout autre vinyle)
+  return 'vinyl_lp'
 }
 
-// Recherche de la pochette sur l'API Discogs pour un vinyle
+// Recherche de la pochette sur l'API Discogs
 async function fetchCoverFromDiscogs(artist, title) {
   try {
     const query = encodeURIComponent(`${artist} ${title}`);
@@ -149,10 +188,8 @@ async function fetchCoverFromDiscogs(artist, title) {
   return null;
 }
 
-// Pause asynchrone pour respecter les quotas de l'API Discogs
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Traitement enrichi + envoi dans Supabase
 async function processAndImport() {
   if (parsedRawItems.value.length === 0) return;
 
@@ -162,7 +199,6 @@ async function processAndImport() {
   const itemsToInsert = [];
 
   for (const raw of parsedRawItems.value) {
-    // 1. Appel API Discogs pour choper la pochette
     const coverUrl = await fetchCoverFromDiscogs(raw.artist, raw.title);
 
     itemsToInsert.push({
@@ -177,18 +213,17 @@ async function processAndImport() {
     });
 
     progressCount.value++;
-    // Pause de 100ms pour éviter les blocages de l'API Discogs
     await delay(100);
   }
 
   try {
-    const { error } = await supabase
+    const { error } = await $supabase
       .from('vinyls')
       .insert(itemsToInsert);
 
     if (error) throw error;
 
-    alert(`Succès : ${itemsToInsert.length} vinyles importés avec leurs pochettes !`);
+    alert(`Succès : ${itemsToInsert.length} vinyles importés avec leurs titres complets !`);
     emit('imported');
     emit('close');
   } catch (err) {
@@ -265,7 +300,6 @@ async function processAndImport() {
   font-weight: 600;
 }
 
-/* PROGRESS BAR */
 .progress-container {
   display: flex;
   flex-direction: column;

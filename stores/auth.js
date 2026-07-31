@@ -1,3 +1,4 @@
+// stores/auth.js
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -18,9 +19,14 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = false
   }
 
-  async function signUp(email, password) {
+  // Supporte désormais les métadonnées (firstName, lastName)
+  async function signUp(email, password, options = {}) {
     const { $supabase } = useNuxtApp()
-    const { data, error } = await $supabase.auth.signUp({ email, password })
+    const { data, error } = await $supabase.auth.signUp({ 
+      email, 
+      password,
+      ...options
+    })
     if (error) throw error
     return data
   }
@@ -39,5 +45,13 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
-  return { user, loading, initializeAuth, signUp, signIn, signOut }
+  return { 
+    user, 
+    loading, 
+    initializeAuth, 
+    signUp, 
+    signIn, 
+    signOut,
+    logout: signOut // Alias pour éviter toute erreur si appelé avec logout()
+  }
 })

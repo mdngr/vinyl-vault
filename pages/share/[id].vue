@@ -2,7 +2,7 @@
   <div class="public-collection-page">
     <header class="public-header">
       <div class="header-titles">
-        <h2>Collection Partagée</h2>
+        <h2>Collection Partagée de </h2>
         <p class="stats-text">{{ items.length }} œuvre(s)</p>
       </div>
       
@@ -105,6 +105,11 @@ onMounted(async () => {
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('first_name, last_name, city')
+      .eq('id', userId)
+      .single()
 
     if (error) throw error;
     // Exclut la wishlist (sécurité au cas où is_wishlist est null)
