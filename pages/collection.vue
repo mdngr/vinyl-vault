@@ -174,8 +174,9 @@
         />
       </div>
 
-      <!-- 🖥️ DESKTOP : BARRE FLOTTANTE DE SÉLECTION DE CONTENU EN BAS DE L'ÉCRAN -->
+      <!-- 🖥️ DESKTOP : BARRE FLOTTANTE DE SÉLECTION DE CONTENU (FILTRÉE DYNAMIQUEMENT) -->
       <div class="floating-type-bar desktop-only">
+        <!-- Onglet Tout (toujours visible) -->
         <button 
           class="floating-tab" 
           :class="{ active: collectionStore.activeTypeFilter === 'all' }"
@@ -185,31 +186,16 @@
           <span class="tab-title">Tout</span>
         </button>
 
+        <!-- Onglets filtrés selon les préférences utilisateur -->
         <button 
+          v-for="tab in activeMediaTabs"
+          :key="tab.key"
           class="floating-tab" 
-          :class="{ active: collectionStore.activeTypeFilter === 'vinyl' }"
-          @click="collectionStore.activeTypeFilter = 'vinyl'"
+          :class="{ active: collectionStore.activeTypeFilter === tab.key }"
+          @click="collectionStore.activeTypeFilter = tab.key"
         >
-          <span class="tab-emoji">🎵</span>
-          <span class="tab-title">Musique</span>
-        </button>
-
-        <button 
-          class="floating-tab" 
-          :class="{ active: collectionStore.activeTypeFilter === 'book' }"
-          @click="collectionStore.activeTypeFilter = 'book'"
-        >
-          <span class="tab-emoji">📚</span>
-          <span class="tab-title">Livres</span>
-        </button>
-
-        <button 
-          class="floating-tab" 
-          :class="{ active: collectionStore.activeTypeFilter === 'movie' }"
-          @click="collectionStore.activeTypeFilter = 'movie'"
-        >
-          <span class="tab-emoji">🎬</span>
-          <span class="tab-title">Films</span>
+          <span class="tab-emoji">{{ tab.emoji }}</span>
+          <span class="tab-title">{{ tab.label }}</span>
         </button>
       </div>
 
@@ -273,6 +259,45 @@ const mobileSearchInput = ref(null);
 const isListView = ref(false);
 const isMobile = ref(false);
 
+// Réglages des médias activés par l'utilisateur
+const userMediaSettings = ref({
+  vinyl: true,
+  book: true,
+  movie: true,
+  boardgame: false,
+  videogame: false
+});
+
+function loadMediaSettings() {
+  const userMeta = authStore.user?.user_metadata?.media_settings;
+  if (userMeta) {
+    userMediaSettings.value = { ...userMediaSettings.value, ...userMeta };
+    return;
+  }
+
+  if (import.meta.client) {
+    const saved = localStorage.getItem('user_media_settings');
+    if (saved) {
+      try {
+        userMediaSettings.value = { ...userMediaSettings.value, ...JSON.parse(saved) };
+      } catch (e) {}
+    }
+  }
+}
+
+// Calcule les onglets affichés dans la barre flottante desktop
+const activeMediaTabs = computed(() => {
+  const allTabs = [
+    { key: 'vinyl', label: 'Musique', emoji: '🎵' },
+    { key: 'book', label: 'Livres', emoji: '📚' },
+    { key: 'movie', label: 'Films', emoji: '🎬' },
+    { key: 'boardgame', label: 'Jeux', emoji: '🎲' },
+    { key: 'videogame', label: 'Gaming', emoji: '🎮' }
+  ];
+
+  return allTabs.filter(tab => userMediaSettings.value[tab.key]);
+});
+
 // Gestion du scroll mobile pour masquer / réafficher la barre de filtres
 const isToolbarHidden = ref(false);
 let lastScrollY = 0;
@@ -282,22 +307,18 @@ function handleScroll() {
 
   const currentScrollY = window.scrollY;
 
-  // 1. Toujours afficher proche du haut de page
   if (currentScrollY <= 10) {
     isToolbarHidden.value = false;
     lastScrollY = currentScrollY;
     return;
   }
 
-  // 2. Détection dynamique du sens de défilement
   const delta = currentScrollY - lastScrollY;
 
   if (Math.abs(delta) > 5) {
     if (delta > 0) {
-      // Scroll vers le bas -> Cacher vers le haut
       isToolbarHidden.value = true;
     } else {
-      // Scroll vers le haut -> Réafficher immédiatement
       isToolbarHidden.value = false;
     }
     lastScrollY = currentScrollY;
@@ -308,7 +329,9 @@ const activeTypeTitle = computed(() => {
   const map = {
     vinyl: '· Musique',
     book: '· Livres',
-    movie: '· Films'
+    movie: '· Films',
+    boardgame: '· Jeux',
+    videogame: '· Gaming'
   };
   return map[collectionStore.activeTypeFilter] || '';
 });
@@ -320,18 +343,32 @@ function handleResize() {
 }
 
 onMounted(async () => {
+  loadMediaSettings();
   handleResize();
+
+  // S'assure que le filtre démarre sur 'all'
+  if (!collectionStore.activeTypeFilter) {
+    collectionStore.activeTypeFilter = 'all';
+  }
+
   if (import.meta.client) {
     window.addEventListener('resize', handleResize);
     window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('storage', loadMediaSettings);
+    window.addEventListener('media-settings-changed', loadMediaSettings);
   }
-  await collectionStore.fetchItems();
+
+  if (collectionStore.items.length === 0) {
+    await collectionStore.fetchItems();
+  }
 });
 
 onUnmounted(() => {
   if (import.meta.client) {
     window.removeEventListener('resize', handleResize);
     window.removeEventListener('scroll', handleScroll);
+    window.removeEventListener('storage', loadMediaSettings);
+    window.removeEventListener('media-settings-changed', loadMediaSettings);
   }
 });
 
@@ -339,7 +376,10 @@ watch(
   () => authStore.user,
   async (newUser) => {
     if (newUser) {
-      await collectionStore.fetchItems();
+      loadMediaSettings();
+      if (collectionStore.items.length === 0) {
+        await collectionStore.fetchItems();
+      }
     }
   },
   { immediate: true }
@@ -617,7 +657,7 @@ async function deleteItem(id) {
   color: #fff;
 }
 
-/* 🖥️ BARRE FLOTTANTE DESKTOP (NAVIGATION PAR TYPE) */
+/* 🖥️ BARRE FLOTTANTE DESKTOP (NAVIGATION PAR TYPE DYNAMIQUE) */
 .floating-type-bar {
   position: fixed;
   bottom: 24px;
@@ -672,7 +712,7 @@ async function deleteItem(id) {
   font-size: 1rem;
 }
 
-/* 📱 AJUSTEMENTS ET COMPORTEMENT DE SCROLL SMARTPHONE */
+/* 📱 AJUSTEMENTS SMARTPHONE */
 @media (max-width: 768px) {
   .toolbar {
     position: fixed;
@@ -698,7 +738,6 @@ async function deleteItem(id) {
     opacity: 1;
   }
 
-  /* Masquage de la barre au scroll vers le bas */
   .toolbar.is-hidden-mobile {
     transform: translateY(calc(-100% - 20px - env(safe-area-inset-top)));
     opacity: 0;

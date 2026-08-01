@@ -8,7 +8,7 @@
     </header>
 
     <div class="account-grid">
-      <!-- CARTE PROFIL -->
+      <!-- 1. CARTE PROFIL PRINCIPAL (TOUJOURS VISIBLE) -->
       <div class="account-card profile-card">
         <div class="profile-main">
           <div class="user-avatar">
@@ -19,9 +19,6 @@
             <h3>{{ fullName }}</h3>
             <p class="user-email">{{ userEmail }}</p>
             <p v-if="userCity" class="user-city">📍 {{ userCity }}</p>
-            <!-- <p class="user-id" :title="userId">
-              ID : <code>{{ truncatedUserId }}</code>
-            </p> -->
           </div>
         </div>
 
@@ -37,7 +34,7 @@
         </div>
       </div>
 
-      <!-- CARTE STATISTIQUES GLOBALES -->
+      <!-- 2. CARTE STATISTIQUES GLOBALES (RÉSUMÉ RAPIDE) -->
       <div class="account-card stats-card">
         <h4>📊 Vue d'ensemble</h4>
         <div class="stats-grid">
@@ -56,71 +53,175 @@
         </div>
       </div>
 
-      <!-- CARTE STATISTIQUES PAR TYPE -->
-      <div class="account-card stats-card">
-        <h4>🏷️ Répartition par type</h4>
-        <div class="stats-types-list">
-          <div class="type-row">
-            <div class="type-label">
-              <span class="type-icon">🎵</span>
-              <span>Musique</span>
+      <!-- 3. ACCORDÉON : RÉGLAGES DES MÉDIAS (DÉPLIABLE & ENREGISTRÉ EN BDD) -->
+      <div class="account-card accordion-card">
+        <button type="button" class="accordion-trigger" @click="sections.media = !sections.media">
+          <div class="accordion-title">
+            <span class="accordion-icon">🎛️</span>
+            <div>
+              <h4>Collections & Médias gérés</h4>
+              <p class="accordion-subtitle">Activer ou masquer des catégories</p>
             </div>
-            <span class="stat-value">{{ vinylsCount }}</span>
-            <span class="sub-stat">{{ vinylsWishlistCount }} en wishlist</span>
           </div>
+          <span class="toggle-arrow">{{ sections.media ? '▲' : '▼' }}</span>
+        </button>
 
-          <div class="type-row">
-            <div class="type-label">
-              <span class="type-icon">📚</span>
-              <span>Livres</span>
-            </div>
-            <span class="stat-value">{{ booksCount }}</span>
-            <span class="sub-stat">{{ booksWishlistCount }} en wishlist</span>
-          </div>
+        <div v-if="sections.media" class="accordion-body">
+          <p class="settings-subtext">Coche uniquement les catégories que tu souhaites afficher dans tes filtres et ta recherche.</p>
 
-          <div class="type-row">
-            <div class="type-label">
-              <span class="type-icon">🎬</span>
-              <span>Films</span>
-            </div>
-            <span class="stat-value">{{ moviesCount }}</span>
-            <span class="sub-stat">{{ moviesWishlistCount }} en wishlist</span>
+          <div class="switches-list">
+            <label class="switch-item">
+              <div class="switch-info">
+                <span class="type-icon">🎵</span>
+                <span>Musique (Vinyles, CD...)</span>
+              </div>
+              <input type="checkbox" v-model="userMediaSettings.vinyl" @change="saveMediaSettings" />
+            </label>
+
+            <label class="switch-item">
+              <div class="switch-info">
+                <span class="type-icon">📚</span>
+                <span>Livres & BD</span>
+              </div>
+              <input type="checkbox" v-model="userMediaSettings.book" @change="saveMediaSettings" />
+            </label>
+
+            <label class="switch-item">
+              <div class="switch-info">
+                <span class="type-icon">🎬</span>
+                <span>Films & Séries</span>
+              </div>
+              <input type="checkbox" v-model="userMediaSettings.movie" @change="saveMediaSettings" />
+            </label>
+
+            <label class="switch-item highlight">
+              <div class="switch-info">
+                <span class="type-icon">🎲</span>
+                <span>Jeux de société</span>
+              </div>
+              <input type="checkbox" v-model="userMediaSettings.boardgame" @change="saveMediaSettings" />
+            </label>
+
+            <label class="switch-item highlight">
+              <div class="switch-info">
+                <span class="type-icon">🎮</span>
+                <span>Jeux vidéo</span>
+              </div>
+              <input type="checkbox" v-model="userMediaSettings.videogame" @change="saveMediaSettings" />
+            </label>
           </div>
         </div>
       </div>
 
-      <!-- 📥 CARTE IMPORTS & EXPORTS -->
-      <div class="account-card actions-card">
-        <h4>📥 Données & Sauvegardes</h4>
-        
-        <div class="tools-list">
-          <button class="btn-action btn-secondary" @click="isImportModalOpen = true">
-            <span class="btn-icon">🎵</span>
-            <span>Importer ma Wantlist Discogs (.csv)</span>
-          </button>
+      <!-- 4. ACCORDÉON : STATISTIQUES DÉTAILLÉES (DÉPLIABLE) -->
+      <div class="account-card accordion-card">
+        <button type="button" class="accordion-trigger" @click="sections.stats = !sections.stats">
+          <div class="accordion-title">
+            <span class="accordion-icon">🏷️</span>
+            <div>
+              <h4>Détail par catégorie</h4>
+              <p class="accordion-subtitle">Nombre d'éléments possédés et recherchés</p>
+            </div>
+          </div>
+          <span class="toggle-arrow">{{ sections.stats ? '▲' : '▼' }}</span>
+        </button>
 
-          <button 
-            class="btn-action btn-secondary" 
-            @click="exportCollection" 
-            :disabled="collectionStore.items.length === 0"
-          >
-            <span class="btn-icon">📦</span>
-            <span>Exporter ma médiathèque (CSV)</span>
-          </button>
+        <div v-if="sections.stats" class="accordion-body">
+          <div class="stats-types-list">
+            <div v-if="userMediaSettings.vinyl" class="type-row">
+              <div class="type-label">
+                <span class="type-icon">🎵</span>
+                <span>Musique</span>
+              </div>
+              <span class="stat-value">{{ vinylsCount }}</span>
+              <span class="sub-stat">{{ vinylsWishlistCount }} en wishlist</span>
+            </div>
+
+            <div v-if="userMediaSettings.book" class="type-row">
+              <div class="type-label">
+                <span class="type-icon">📚</span>
+                <span>Livres</span>
+              </div>
+              <span class="stat-value">{{ booksCount }}</span>
+              <span class="sub-stat">{{ booksWishlistCount }} en wishlist</span>
+            </div>
+
+            <div v-if="userMediaSettings.movie" class="type-row">
+              <div class="type-label">
+                <span class="type-icon">🎬</span>
+                <span>Films</span>
+              </div>
+              <span class="stat-value">{{ moviesCount }}</span>
+              <span class="sub-stat">{{ moviesWishlistCount }} en wishlist</span>
+            </div>
+
+            <div v-if="userMediaSettings.boardgame" class="type-row">
+              <div class="type-label">
+                <span class="type-icon">🎲</span>
+                <span>Jeux</span>
+              </div>
+              <span class="stat-value">{{ boardgamesCount }}</span>
+              <span class="sub-stat">{{ boardgamesWishlistCount }} en wishlist</span>
+            </div>
+
+            <div v-if="userMediaSettings.videogame" class="type-row">
+              <div class="type-label">
+                <span class="type-icon">🎮</span>
+                <span>Gaming</span>
+              </div>
+              <span class="stat-value">{{ videogamesCount }}</span>
+              <span class="sub-stat">{{ videogamesWishlistCount }} en wishlist</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- CARTE ACTIONS -->
-      <div class="account-card actions-card">
-        <h4>⚙️ Sécurité & Session</h4>
-        
-        <button class="btn-action btn-secondary" @click="resetPassword" :disabled="sendingEmail">
-          {{ sendingEmail ? 'Envoi en cours...' : '🔑 Réinitialiser mon mot de passe' }}
+      <!-- 5. ACCORDÉON : OUTILS & REGLAGES (DONNÉES & SÉCURITÉ REGROUPÉS) -->
+      <div class="account-card accordion-card">
+        <button type="button" class="accordion-trigger" @click="sections.tools = !sections.tools">
+          <div class="accordion-title">
+            <span class="accordion-icon">⚙️</span>
+            <div>
+              <h4>Données & Sécurité du compte</h4>
+              <p class="accordion-subtitle">Exports, imports Discogs et mot de passe</p>
+            </div>
+          </div>
+          <span class="toggle-arrow">{{ sections.tools ? '▲' : '▼' }}</span>
         </button>
 
-        <button class="btn-action btn-danger" @click="handleLogout">
-          🚪 Se déconnecter
-        </button>
+        <div v-if="sections.tools" class="accordion-body">
+          <div class="actions-group">
+            <span class="group-title">📥 Données & Sauvegardes</span>
+            <div class="tools-list">
+              <button class="btn-action btn-secondary" @click="isImportModalOpen = true">
+                <span class="btn-icon">🎵</span>
+                <span>Importer ma Wantlist Discogs (.csv)</span>
+              </button>
+
+              <button 
+                class="btn-action btn-secondary" 
+                @click="exportCollection" 
+                :disabled="collectionStore.items.length === 0"
+              >
+                <span class="btn-icon">📦</span>
+                <span>Exporter ma médiathèque (CSV)</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="actions-group margin-top">
+            <span class="group-title">🔒 Connexion & Session</span>
+            <div class="tools-list">
+              <button class="btn-action btn-secondary" @click="resetPassword" :disabled="sendingEmail">
+                {{ sendingEmail ? 'Envoi en cours...' : '🔑 Réinitialiser mon mot de passe' }}
+              </button>
+
+              <button class="btn-action btn-danger" @click="handleLogout">
+                🚪 Se déconnecter
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -229,6 +330,22 @@ const { $supabase } = useNuxtApp();
 const sendingEmail = ref(false);
 const isImportModalOpen = ref(false);
 
+// État des accordéons
+const sections = ref({
+  media: false,
+  stats: false,
+  tools: false
+});
+
+// Réglages par défaut des types de médias
+const userMediaSettings = ref({
+  vinyl: true,
+  book: true,
+  movie: true,
+  boardgame: false,
+  videogame: false
+});
+
 // État du profil
 const userProfile = ref({
   first_name: '',
@@ -245,7 +362,6 @@ const savingProfile = ref(false);
 const editErrorMsg = ref('');
 
 const userEmail = computed(() => authStore.user?.email || 'Utilisateur');
-const userId = computed(() => authStore.user?.id || 'Inconnu');
 
 const fullName = computed(() => {
   if (userProfile.value.first_name || userProfile.value.last_name) {
@@ -266,10 +382,48 @@ const userAvatarLetter = computed(() => {
   return '👤';
 });
 
-const truncatedUserId = computed(() => {
-  if (!userId.value || userId.value === 'Inconnu') return 'Inconnu';
-  return `${userId.value.slice(0, 4)}...${userId.value.slice(-4)}`;
-});
+// 📥 Chargement des préférences de médias (BDD Supabase avec fallback localStorage)
+function loadMediaSettings() {
+  const metaSettings = authStore.user?.user_metadata?.media_settings;
+
+  if (metaSettings) {
+    userMediaSettings.value = { ...userMediaSettings.value, ...metaSettings };
+    if (import.meta.client) {
+      localStorage.setItem('user_media_settings', JSON.stringify(userMediaSettings.value));
+    }
+  } else if (import.meta.client) {
+    const saved = localStorage.getItem('user_media_settings');
+    if (saved) {
+      try {
+        userMediaSettings.value = { ...userMediaSettings.value, ...JSON.parse(saved) };
+      } catch (e) {
+        console.error("Erreur lecture media settings", e);
+      }
+    }
+  }
+}
+
+// 💾 Sauvegarde des préférences dans la BDD Supabase + LocalStorage & notification inter-composants
+async function saveMediaSettings() {
+  if (import.meta.client) {
+    localStorage.setItem('user_media_settings', JSON.stringify(userMediaSettings.value));
+    window.dispatchEvent(new Event('media-settings-changed'));
+  }
+
+  if (authStore.user) {
+    try {
+      const { error } = await $supabase.auth.updateUser({
+        data: {
+          media_settings: userMediaSettings.value
+        }
+      });
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('Erreur lors de la sauvegarde dans Supabase :', err.message);
+    }
+  }
+}
 
 // Chargement du profil depuis Supabase
 async function fetchUserProfile() {
@@ -290,9 +444,9 @@ async function fetchUserProfile() {
   }
 }
 
-// Réagir quand l'utilisateur se connecte/charge
 watch(() => authStore.user, (newUser) => {
   if (newUser?.id) {
+    loadMediaSettings();
     fetchUserProfile();
     if (collectionStore.items.length === 0) {
       collectionStore.fetchItems();
@@ -360,29 +514,20 @@ const wishlistItemsCount = computed(() => {
 });
 
 // Stats par type
-const vinylsCount = computed(() => {
-  return collectionStore.items.filter(i => i.type === 'vinyl').length;
-});
+const vinylsCount = computed(() => collectionStore.items.filter(i => i.type === 'vinyl').length);
+const vinylsWishlistCount = computed(() => collectionStore.items.filter(i => i.type === 'vinyl' && i.is_wishlist).length);
 
-const vinylsWishlistCount = computed(() => {
-  return collectionStore.items.filter(i => i.type === 'vinyl' && i.is_wishlist).length;
-});
+const booksCount = computed(() => collectionStore.items.filter(i => i.type === 'book').length);
+const booksWishlistCount = computed(() => collectionStore.items.filter(i => i.type === 'book' && i.is_wishlist).length);
 
-const booksCount = computed(() => {
-  return collectionStore.items.filter(i => i.type === 'book').length;
-});
+const moviesCount = computed(() => collectionStore.items.filter(i => i.type === 'movie').length);
+const moviesWishlistCount = computed(() => collectionStore.items.filter(i => i.type === 'movie' && i.is_wishlist).length);
 
-const booksWishlistCount = computed(() => {
-  return collectionStore.items.filter(i => i.type === 'book' && i.is_wishlist).length;
-});
+const boardgamesCount = computed(() => collectionStore.items.filter(i => i.type === 'boardgame').length);
+const boardgamesWishlistCount = computed(() => collectionStore.items.filter(i => i.type === 'boardgame' && i.is_wishlist).length);
 
-const moviesCount = computed(() => {
-  return collectionStore.items.filter(i => i.type === 'movie').length;
-});
-
-const moviesWishlistCount = computed(() => {
-  return collectionStore.items.filter(i => i.type === 'movie' && i.is_wishlist).length;
-});
+const videogamesCount = computed(() => collectionStore.items.filter(i => i.type === 'videogame').length);
+const videogamesWishlistCount = computed(() => collectionStore.items.filter(i => i.type === 'videogame' && i.is_wishlist).length);
 
 async function resetPassword() {
   if (!authStore.user?.email) return;
@@ -453,6 +598,7 @@ function exportCollection() {
 }
 
 onMounted(() => {
+  loadMediaSettings();
   if (authStore.user?.id) {
     fetchUserProfile();
     if (collectionStore.items.length === 0) {
@@ -513,17 +659,11 @@ onMounted(() => {
   border-radius: 16px;
   padding: 20px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 16px;
 }
 
 /* CARTE PROFIL */
-.profile-card {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 16px;
-}
-
 .profile-main {
   display: flex;
   align-items: center;
@@ -570,20 +710,6 @@ onMounted(() => {
   color: #60a5fa;
 }
 
-.user-id {
-  margin: 4px 0 0 0;
-  font-size: 0.75rem;
-  color: #71717a;
-}
-
-.user-id code {
-  background: #09090b;
-  color: #a1a1aa;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
-}
-
 .profile-actions-row {
   display: flex;
   flex-direction: column;
@@ -616,14 +742,9 @@ onMounted(() => {
   font-size: 0.95rem;
 }
 
-/* CARTES STATS ET ACTIONS */
-.stats-card, .actions-card {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.stats-card h4, .actions-card h4 {
-  margin: 0 0 16px 0;
+/* CARTE STATS GLOBALES */
+.stats-card h4 {
+  margin: 0 0 12px 0;
   color: #fff;
   font-size: 1.05rem;
 }
@@ -661,6 +782,107 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
+/* 📂 STYLES ACCORDÉONS (DÉPLIABLES) */
+.accordion-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.accordion-trigger {
+  width: 100%;
+  padding: 18px 20px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s ease;
+}
+
+.accordion-trigger:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.accordion-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.accordion-icon {
+  font-size: 1.3rem;
+}
+
+.accordion-title h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: #fff;
+  font-weight: 700;
+}
+
+.accordion-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 0.78rem;
+  color: #71717a;
+}
+
+.toggle-arrow {
+  font-size: 0.75rem;
+  color: #a1a1aa;
+}
+
+.accordion-body {
+  padding: 0 20px 20px 20px;
+  border-top: 1px solid #27272a;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 4px;
+  padding-top: 16px;
+}
+
+.settings-subtext {
+  font-size: 0.8rem;
+  color: #a1a1aa;
+  margin: 0;
+}
+
+.switches-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.switch-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.switch-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.switch-item input[type="checkbox"] {
+  accent-color: #3b82f6;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+/* LISTE TYPES DE STATS */
 .stats-types-list {
   display: flex;
   flex-direction: column;
@@ -703,6 +925,27 @@ onMounted(() => {
   font-size: 0.75rem;
   color: #71717a;
   text-align: right;
+}
+
+/* REGROUPEMENT D'ACTIONS */
+.actions-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.actions-group.margin-top {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px dashed #27272a;
+}
+
+.group-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #a1a1aa;
+  letter-spacing: 0.05em;
 }
 
 .tools-list {
@@ -881,27 +1124,6 @@ onMounted(() => {
     text-align: center;
     font-size: 1.8rem;
     margin-bottom: 8px;
-  }
-
-  .profile-card {
-    text-align: center;
-    padding: 24px 16px;
-  }
-
-  .profile-main {
-    flex-direction: column;
-    text-align: center;
-    gap: 10px;
-  }
-
-  .user-avatar {
-    width: 64px;
-    height: 64px;
-    font-size: 1.8rem;
-  }
-
-  .user-info h3 {
-    font-size: 1.25rem;
   }
 
   .stats-grid {

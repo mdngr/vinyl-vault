@@ -13,7 +13,7 @@
       <button class="feature-chip" @click="goToSearch">✨ Wishlist</button>
       <button class="feature-chip" @click="goToSearch">🎲 Lucky Pick</button>
     </div>
-
+    <br />
     <!-- Bouton principal de redirection vers la recherche -->
     <button 
       v-if="config.actionLabel" 
@@ -175,6 +175,7 @@ function handleAction() {
 }
 
 .btn-action {
+  margin-top: 20px;
   padding: 10px 20px;
   font-size: 0.85rem;
   font-weight: 600;

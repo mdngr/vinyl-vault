@@ -20,9 +20,10 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-      supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-      discogsToken: import.meta.env.VITE_DISCOGS_TOKEN
+      supabaseUrl: process.env.VITE_SUPABASE_URL,
+      supabaseAnonKey: process.env.VITE_SUPABASE_ANON_KEY,
+      discogsToken: process.env.NUXT_PUBLIC_DISCOGS_TOKEN || process.env.VITE_DISCOGS_TOKEN || '',
+      rawgToken: process.env.NUXT_PUBLIC_RAWG_TOKEN || process.env.VITE_RAWG_TOKEN || ''
     }
   },
 

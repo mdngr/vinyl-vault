@@ -14,6 +14,7 @@
       class="mobile-tab-bar mobile-only"
       :class="{ 'is-hidden': isTabBarHidden }"
     >
+      <!-- Bouton "Tout" toujours présent -->
       <button 
         class="tab-item" 
         :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === 'all' }"
@@ -23,33 +24,19 @@
         <span class="tab-label">Tout</span>
       </button>
       
+      <!-- Boutons dynamiques selon les préférences du compte -->
       <button 
+        v-for="tab in activeMediaTabs"
+        :key="tab.key"
         class="tab-item" 
-        :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === 'vinyl' }"
-        @click="navToCollection('vinyl')"
+        :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === tab.key }"
+        @click="navToCollection(tab.key)"
       >
-        <span class="tab-icon">🎵</span>
-        <span class="tab-label">Musique</span>
+        <span class="tab-icon">{{ tab.emoji }}</span>
+        <span class="tab-label">{{ tab.label }}</span>
       </button>
 
-      <button 
-        class="tab-item" 
-        :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === 'book' }"
-        @click="navToCollection('book')"
-      >
-        <span class="tab-icon">📚</span>
-        <span class="tab-label">Livres</span>
-      </button>
-
-      <button 
-        class="tab-item" 
-        :class="{ active: route.path === '/collection' && collectionStore.activeTypeFilter === 'movie' }"
-        @click="navToCollection('movie')"
-      >
-        <span class="tab-icon">🎬</span>
-        <span class="tab-label">Films</span>
-      </button>
-
+      <!-- Boutons d'action toujours présents -->
       <button 
         class="tab-item" 
         :class="{ active: route.path === '/search' }"
@@ -72,13 +59,54 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { useCollectionStore } from '~/stores/collection'
 
 const route = useRoute()
 const authStore = useAuthStore()
 const collectionStore = useCollectionStore()
+
+// Réglages des médias activés
+const userMediaSettings = ref({
+  vinyl: true,
+  book: true,
+  movie: true,
+  boardgame: false,
+  videogame: false
+})
+
+function loadMediaSettings() {
+  // 1. Priorité aux métadonnées Supabase de l'utilisateur connecté
+  const userMeta = authStore.user?.user_metadata?.media_settings;
+  if (userMeta) {
+    userMediaSettings.value = { ...userMediaSettings.value, ...userMeta };
+    return;
+  }
+
+  // 2. Fallback au localStorage si déconnecté ou hors-ligne
+  if (import.meta.client) {
+    const saved = localStorage.getItem('user_media_settings');
+    if (saved) {
+      try {
+        userMediaSettings.value = { ...userMediaSettings.value, ...JSON.parse(saved) };
+      } catch (e) {}
+    }
+  }
+}
+
+// Filtre uniquement les médias activés
+const activeMediaTabs = computed(() => {
+  const allTabs = [
+    { key: 'vinyl', label: 'Musique', emoji: '🎵' },
+    { key: 'book', label: 'Livres', emoji: '📚' },
+    { key: 'movie', label: 'Films', emoji: '🎬' },
+    { key: 'boardgame', label: 'Jeux', emoji: '🎲' },
+    { key: 'videogame', label: 'Gaming', emoji: '🎮' }
+  ]
+
+  return allTabs.filter(tab => userMediaSettings.value[tab.key])
+})
 
 // Gestion du scroll pour masquer la barre
 const isTabBarHidden = ref(false)
@@ -98,8 +126,7 @@ function handleScroll() {
     return;
   }
 
-  // 2. 🎯 NOUVEAU : Réafficher automatiquement si on atteint le tout bas de la page
-  // (marge de 20px pour anticiper les arrondis sur mobile / barres de navigation natives)
+  // 2. Réafficher automatiquement si on atteint le bas de la page
   if (currentScrollY + windowHeight >= documentHeight - 20) {
     isTabBarHidden.value = false;
     lastScrollY = currentScrollY;
@@ -111,10 +138,8 @@ function handleScroll() {
 
   if (Math.abs(delta) > 5) {
     if (delta > 0) {
-      // Scroll vers le bas -> Cacher
       isTabBarHidden.value = true;
     } else {
-      // Scroll vers le haut -> Réafficher
       isTabBarHidden.value = false;
     }
     lastScrollY = currentScrollY;
@@ -123,18 +148,22 @@ function handleScroll() {
 
 // Initialisation au chargement
 onMounted(async () => {
+  loadMediaSettings()
+
   if (authStore.initializeAuth) {
     await authStore.initializeAuth()
   }
 
   if (import.meta.client) {
     window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('storage', loadMediaSettings)
   }
 })
 
 onUnmounted(() => {
   if (import.meta.client) {
     window.removeEventListener('scroll', handleScroll)
+    window.removeEventListener('storage', loadMediaSettings)
   }
 })
 
@@ -151,13 +180,12 @@ function navToCollection(filterType) {
 html, body {
   margin: 0;
   padding: 0;
-  background-color: #09090b; /* Couleur de fond uniforme pour toute l'application */
+  background-color: #09090b;
   color: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   min-height: 100vh;
 }
 
-/* S'assure que le conteneur racine prend au moins toute la hauteur avec la bonne couleur */
 #app {
   min-height: 100vh;
   background-color: #09090b;
@@ -170,7 +198,6 @@ html, body {
 
 /* Visibilité forcée en version Mobile (<= 768px) */
 @media (max-width: 768px) {
-  /* Espace de sécurité sous le contenu avec le même fond que la page */
   body {
     padding-bottom: calc(85px + env(safe-area-inset-bottom, 0px));
     background-color: #09090b;
@@ -194,18 +221,16 @@ html, body {
     display: flex !important;
     justify-content: space-around;
     align-items: center;
-    padding: 0 6px;
+    padding: 0 4px;
     z-index: 2000;
     
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
     
-    /* Animation de glissement */
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
     transform: translateY(0);
     opacity: 1;
   }
 
-  /* État masqué au scroll vers le bas */
   .mobile-tab-bar.is-hidden {
     transform: translateY(calc(100% + 24px));
     opacity: 0;
@@ -221,19 +246,27 @@ html, body {
     align-items: center;
     justify-content: center;
     gap: 2px;
-    font-size: 0.6rem;
+    font-size: 0.55rem;
     font-weight: 600;
     cursor: pointer;
     flex: 1;
+    min-width: 0;
     height: 48px;
     border-radius: 24px;
-    padding: 0;
+    padding: 0 2px;
     transition: all 0.2s ease;
   }
 
   .tab-icon {
-    font-size: 1.05rem;
+    font-size: 1rem;
     line-height: 1;
+  }
+
+  .tab-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   .tab-item.active {

@@ -74,7 +74,7 @@ export const useCollectionStore = defineStore('collection', {
   },
 
   actions: {
-    // 🛡️ Sauvegarde sécurisée : n'écrase jamais le cache si le tableau est vide sans raison
+    // 🛡️ Sauvegarde sécurisée dans le cache
     saveToCache(userId) {
       if (import.meta.client && userId) {
         localStorage.setItem(`culture_vault_cache_${userId}`, JSON.stringify(this.items));
@@ -105,23 +105,20 @@ export const useCollectionStore = defineStore('collection', {
       const authStore = useAuthStore();
       const userId = authStore.user?.id;
 
-      // 🔴 SÉCURITÉ : Si l'utilisateur n'est pas encore résolu, on ne touche PAS à this.items
       if (!userId) {
         return;
       }
 
-      // 1. Tenter de charger immédiatement depuis le localStorage si le store est vide
       if (this.items.length === 0) {
         this.loadFromCache(userId);
       }
 
       this.loading = true;
 
-      // 2. Synchronization avec Supabase
       try {
         const { $supabase } = useNuxtApp();
         const { data, error } = await $supabase
-          .from('vinyls')
+          .from('vinyls') // 👈 Cible la table public.vinyls
           .select('*')
           .eq('user_id', userId)
           .order('created_at', { ascending: false });
@@ -136,10 +133,12 @@ export const useCollectionStore = defineStore('collection', {
             cover: i.cover,
             type: i.type || 'vinyl',
             format: i.format,
-            is_wishlist: !!i.is_wishlist
+            is_wishlist: !!i.is_wishlist,
+            rating: i.rating ?? 0,
+            notes: i.notes ?? '',
+            collector_data: i.collector_data ?? {} // 👈 Corrigé : 'i.collector_data' au lieu de 'o'
           }));
 
-          // Mettre à jour le cache local avec les données fraîches
           this.saveToCache(userId);
         }
       } catch (err) {
@@ -216,7 +215,10 @@ export const useCollectionStore = defineStore('collection', {
             type: updatedFields.type,
             format: updatedFields.format || null,
             cover: updatedFields.cover,
-            is_wishlist: updatedFields.is_wishlist
+            is_wishlist: updatedFields.is_wishlist,
+            rating: updatedFields.rating,
+            notes: updatedFields.notes,
+            collector_data: updatedFields.collector_data
           })
           .eq('id', id)
           .select();
@@ -247,7 +249,6 @@ export const useCollectionStore = defineStore('collection', {
       this.saveToCache(authStore.user.id);
     },
 
-    // 🧹 Nettoyage uniquement sur déconnexion explicite
     clearMemory() {
       const authStore = useAuthStore();
       if (import.meta.client && authStore.user?.id) {

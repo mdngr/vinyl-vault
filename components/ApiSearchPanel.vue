@@ -1,27 +1,15 @@
 <template>
   <div class="search-panel">
-    <!-- Onglets par média -->
+    <!-- Onglets par média (FILTRÉS SELON LES PRÉFÉRENCES DU COMPTE) -->
     <div class="media-type-tabs">
       <button 
+        v-for="type in activeMediaTabs"
+        :key="type.key"
         class="tab-btn" 
-        :class="{ active: searchType === 'vinyl' }" 
-        @click="searchType = 'vinyl'"
+        :class="{ active: searchType === type.key }" 
+        @click="searchType = type.key"
       >
-        🎵 Musique
-      </button>
-      <button 
-        class="tab-btn" 
-        :class="{ active: searchType === 'book' }" 
-        @click="searchType = 'book'"
-      >
-        📚 Livres
-      </button>
-      <button 
-        class="tab-btn" 
-        :class="{ active: searchType === 'movie' }" 
-        @click="searchType = 'movie'"
-      >
-        🎬 Films
+        {{ type.emoji }} {{ type.label }}
       </button>
     </div>
 
@@ -155,16 +143,84 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useCollectionStore } from '~/stores/collection';
+import { useAuthStore } from '~/stores/auth';
 import { getFormatLabel } from '~/constants/formats';
 
 const collectionStore = useCollectionStore();
+const authStore = useAuthStore();
 const config = useRuntimeConfig();
 
 const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
 
+// Réglages par défaut des types activés
+const userMediaSettings = ref({
+  vinyl: true,
+  book: true,
+  movie: true,
+  boardgame: false,
+  videogame: false
+});
+
+function loadMediaSettings() {
+  const metaSettings = authStore.user?.user_metadata?.media_settings;
+
+  if (metaSettings) {
+    userMediaSettings.value = { ...userMediaSettings.value, ...metaSettings };
+  } else if (import.meta.client) {
+    const saved = localStorage.getItem('user_media_settings');
+    if (saved) {
+      try {
+        userMediaSettings.value = { ...userMediaSettings.value, ...JSON.parse(saved) };
+      } catch (e) {
+        console.error("Erreur de lecture des médias activés", e);
+      }
+    }
+  }
+}
+
+onMounted(() => {
+  loadMediaSettings();
+  if (import.meta.client) {
+    window.addEventListener('media-settings-changed', loadMediaSettings);
+    window.addEventListener('storage', loadMediaSettings);
+  }
+});
+
+onUnmounted(() => {
+  if (import.meta.client) {
+    window.removeEventListener('media-settings-changed', loadMediaSettings);
+    window.removeEventListener('storage', loadMediaSettings);
+  }
+});
+
+watch(() => authStore.user, () => {
+  loadMediaSettings();
+}, { immediate: true });
+
+// Filtre uniquement les onglets activés dans le compte
+const activeMediaTabs = computed(() => {
+  const allTabs = [
+    { key: 'vinyl', label: 'Musique', emoji: '🎵' },
+    { key: 'book', label: 'Livres', emoji: '📚' },
+    { key: 'movie', label: 'Films', emoji: '🎬' },
+    { key: 'boardgame', label: 'Jeux', emoji: '🎲' },
+    { key: 'videogame', label: 'Gaming', emoji: '🎮' }
+  ];
+
+  return allTabs.filter(tab => userMediaSettings.value[tab.key]);
+});
+
 const searchType = ref('vinyl');
+
+// S'assure que l'onglet actif existe toujours dans les onglets autorisés
+watch(activeMediaTabs, (newTabs) => {
+  if (newTabs.length > 0 && !newTabs.some(t => t.key === searchType.value)) {
+    searchType.value = newTabs[0].key;
+  }
+}, { immediate: true });
+
 const query = ref('');
 const loading = ref(false);
 const results = ref([]);
@@ -185,7 +241,10 @@ let isHardwareZoom = false;
 const placeholderText = computed(() => {
   if (searchType.value === 'vinyl') return 'Album, artiste, EAN...';
   if (searchType.value === 'book') return 'Titre, auteur, ISBN...';
-  return 'Titre du film...';
+  if (searchType.value === 'movie') return 'Titre du film...';
+  if (searchType.value === 'boardgame') return 'Catan, Carcassonne, Dixit...';
+  if (searchType.value === 'videogame') return 'Zelda, Elden Ring, Mario...';
+  return 'Rechercher...';
 });
 
 // Normalisation des formats renvoyés par l'API Discogs
@@ -224,7 +283,6 @@ function getExistingItem(resItem) {
   const cleanArtist = (resItem.artist || '').trim().toLowerCase();
 
   return collectionStore.items.find(item => {
-    // Vérification par ID Discogs prioritaire
     if (resItem.discogs_id && item.discogs_id === resItem.discogs_id) {
       return true;
     }
@@ -345,7 +403,7 @@ function stopScanner() {
   }
 }
 
-// 📸 FALLBACK PHOTO : ANALYSE DIRECTE DU FICHIER IMPORTÉ
+// 📸 FALLBACK PHOTO
 async function handleFileUpload(event) {
   if (!import.meta.client) return;
   const file = event.target.files[0];
@@ -370,7 +428,7 @@ onUnmounted(() => {
   stopScanner();
 });
 
-// 🔍 RECHERCHE API (Discogs / OpenLibrary / TMDB)
+// 🔍 RECHERCHE MULTI-API (Discogs / OpenLibrary / TMDB / BoardGameGeek / RAWG)
 async function searchApi() {
   if (!query.value.trim()) return;
   loading.value = true;
@@ -394,6 +452,7 @@ async function searchApi() {
         type: 'vinyl',
         detectedFormat: mapDiscogsFormat(item.format)
       }));
+
     } else if (searchType.value === 'book') {
       const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query.value)}&limit=12`);
       const data = await res.json();
@@ -406,6 +465,7 @@ async function searchApi() {
         type: 'book',
         detectedFormat: 'paperback'
       }));
+
     } else if (searchType.value === 'movie') {
       const TMDB_KEY = '3fd2be6f0c70a2a598f084dd2754b4c1';
       const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(query.value)}&language=fr-FR`);
@@ -419,6 +479,50 @@ async function searchApi() {
         type: 'movie',
         detectedFormat: 'bluray'
       }));
+
+    } else if (searchType.value === 'boardgame') {
+      const res = await fetch(`https://bgg-json.azurewebsites.net/search?query=${encodeURIComponent(query.value)}`);
+      if (res.ok) {
+        const data = await res.json();
+        results.value = (data || []).slice(0, 12).map(game => ({
+          id: game.gameId,
+          title: game.name,
+          artist: 'Jeu de société',
+          year: game.yearPublished || '',
+          cover: game.thumbnail || null,
+          type: 'boardgame',
+          detectedFormat: 'base_game'
+        }));
+      }
+
+    } else if (searchType.value === 'videogame') {
+      const rawgToken = config.public?.rawgToken || '';
+
+      if (!rawgToken) {
+        console.error("⚠️ RAWG Token non défini dans runtimeConfig.public.rawgToken !");
+      }
+
+      const res = await fetch(
+        `https://api.rawg.io/api/games?key=${rawgToken}&search=${encodeURIComponent(query.value)}&page_size=12`
+      );
+      const data = await res.json();
+
+      if (data.error) {
+        console.error("Erreur renvoyée par RAWG :", data.error);
+      }
+
+      results.value = (data.results || []).map(game => {
+        const platformNames = (game.platforms || []).map(p => p.platform.name).join(', ');
+        return {
+          id: game.id,
+          title: game.name,
+          artist: platformNames || 'Jeu vidéo',
+          year: game.released ? game.released.split('-')[0] : '',
+          cover: game.background_image || null,
+          type: 'videogame',
+          detectedFormat: game.platforms?.some(p => p.platform.name.toLowerCase().includes('switch')) ? 'cartridge' : 'disc'
+        };
+      });
     }
   } catch (err) {
     alert("Erreur lors de la recherche : " + err.message);
@@ -450,8 +554,8 @@ async function moveToCollection(existingItem) {
 
 <style scoped>
 .search-panel { display: flex; flex-direction: column; gap: 16px; }
-.media-type-tabs { display: flex; gap: 8px; }
-.tab-btn { flex: 1; padding: 12px; background: #18181b; border: 1px solid #27272a; color: #a1a1aa; border-radius: 12px; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
+.media-type-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.tab-btn { flex: 1; min-width: 90px; padding: 10px 8px; background: #18181b; border: 1px solid #27272a; color: #a1a1aa; border-radius: 12px; font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space: nowrap; transition: all 0.2s ease; }
 .tab-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 
 .search-form { display: flex; flex-direction: column; gap: 10px; }
@@ -516,7 +620,7 @@ async function moveToCollection(existingItem) {
 .badge-status { position: absolute; bottom: -4px; left: -4px; right: -4px; background: #1d4ed8; color: #fff; font-size: 0.55rem; font-weight: 700; padding: 2px 4px; border-radius: 4px; text-align: center; }
 .res-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; text-align: left; }
 .res-title { font-size: 0.82rem; font-weight: 700; color: #fff; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.res-artist { font-size: 0.72rem; color: #a1a1aa; margin: 2px 0 0 0; }
+.res-artist { font-size: 0.72rem; color: #a1a1aa; margin: 2px 0 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .format-tag-wrapper { margin: 6px 0; }
 .format-badge { display: inline-block; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e4e4e7; font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
 .res-actions { display: flex; gap: 6px; }
