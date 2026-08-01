@@ -94,13 +94,13 @@
               <input type="checkbox" v-model="userMediaSettings.movie" @change="saveMediaSettings" />
             </label>
 
-            <label class="switch-item highlight">
+            <!-- <label class="switch-item highlight">
               <div class="switch-info">
                 <span class="type-icon">🎲</span>
                 <span>Jeux de société</span>
               </div>
               <input type="checkbox" v-model="userMediaSettings.boardgame" @change="saveMediaSettings" />
-            </label>
+            </label> -->
 
             <label class="switch-item highlight">
               <div class="switch-info">

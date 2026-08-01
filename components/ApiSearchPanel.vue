@@ -467,8 +467,8 @@ async function searchApi() {
       }));
 
     } else if (searchType.value === 'movie') {
-      const TMDB_KEY = '3fd2be6f0c70a2a598f084dd2754b4c1';
-      const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(query.value)}&language=fr-FR`);
+      const tmdbToken = config.public?.tmdbToken
+      const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${tmdbToken}&query=${encodeURIComponent(query.value)}&language=fr-FR`);
       const data = await res.json();
       results.value = (data.results || []).slice(0, 12).map(movie => ({
         id: movie.id,
@@ -481,7 +481,7 @@ async function searchApi() {
       }));
 
     } else if (searchType.value === 'boardgame') {
-      const res = await fetch(`https://bgg-json.azurewebsites.net/search?query=${encodeURIComponent(query.value)}`);
+      const res = await fetch(`https://api.boardgameatlas.com/api/search?name=${encodeURIComponent(query)}&limit=10&client_id=`);
       if (res.ok) {
         const data = await res.json();
         results.value = (data || []).slice(0, 12).map(game => ({

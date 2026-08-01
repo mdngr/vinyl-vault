@@ -22,8 +22,9 @@ export default defineNuxtConfig({
     public: {
       supabaseUrl: process.env.VITE_SUPABASE_URL,
       supabaseAnonKey: process.env.VITE_SUPABASE_ANON_KEY,
-      discogsToken: process.env.NUXT_PUBLIC_DISCOGS_TOKEN || process.env.VITE_DISCOGS_TOKEN || '',
-      rawgToken: process.env.NUXT_PUBLIC_RAWG_TOKEN || process.env.VITE_RAWG_TOKEN || ''
+      discogsToken: process.env.VITE_DISCOGS_TOKEN,
+      tmdbToken: process.env.VITE_TMDB_API_KEY,
+      rawgToken: process.env.VITE_RAWG_TOKEN
     }
   },
 
