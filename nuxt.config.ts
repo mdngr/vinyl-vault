@@ -2,6 +2,15 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-07-31',
 
+  devServer: {
+    port: 3000,
+    host: '0.0.0.0'
+  },
+
+  nitro: {
+    preset: 'node-server'
+  },
+
   experimental: {
     appManifest: false
   },
