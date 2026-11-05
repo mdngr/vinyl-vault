@@ -15,9 +15,7 @@ export default defineNuxtConfig({
     appManifest: false
   },
 
-  $development: {
-    devtools: { enabled: true }
-  },
+  devtools: { enabled: false },
 
   modules: [
     '@pinia/nuxt',

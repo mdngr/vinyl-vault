@@ -53,20 +53,29 @@ const zoomValue = ref(1);
 const zoomMin = ref(1);
 const zoomMax = ref(3);
 
+let isStarting = false;
+let isStopping = false;
+
 watch(() => props.isOpen, async (newVal) => {
   if (newVal) {
     await nextTick();
     startScanner();
   } else {
-    stopScanner();
+    stopScanner().catch(() => {});
   }
 });
 
 async function startScanner() {
-  if (!import.meta.client) return;
+  if (!import.meta.client || isStarting) return;
+  isStarting = true;
 
   try {
     const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+
+    if (!props.isOpen) {
+      isStarting = false;
+      return;
+    }
 
     const formatsSupported = [
       Html5QrcodeSupportedFormats.EAN_13,
@@ -76,7 +85,9 @@ async function startScanner() {
       Html5QrcodeSupportedFormats.CODE_128
     ];
 
-    html5QrCode = new Html5Qrcode("reader-vue", { formatsToSupport: formatsSupported });
+    if (!html5QrCode) {
+      html5QrCode = new Html5Qrcode("reader-vue", { formatsToSupport: formatsSupported });
+    }
 
     const config = {
       fps: 15,
@@ -94,10 +105,17 @@ async function startScanner() {
       () => {}
     );
 
+    if (!props.isOpen) {
+      await stopScanner();
+      return;
+    }
+
     setupZoom();
   } catch (err) {
     console.error("Erreur scanner caméra :", err);
     close();
+  } finally {
+    isStarting = false;
   }
 }
 
@@ -166,6 +184,9 @@ function applyZoom() {
 }
 
 async function stopScanner() {
+  if (isStopping) return;
+  isStopping = true;
+
   if (videoElement) {
     videoElement.style.transform = 'none';
   }
@@ -174,23 +195,33 @@ async function stopScanner() {
   videoElement = null;
   hasZoomSupport.value = false;
 
-  if (html5QrCode && html5QrCode.isScanning) {
-    try {
-      await html5QrCode.stop();
-      html5QrCode.clear();
-    } catch (e) {
-      console.warn("Erreur arrêt scanner :", e);
+  try {
+    if (html5QrCode) {
+      const isRunning = typeof html5QrCode.getState === 'function'
+        ? (html5QrCode.getState() === 2 || html5QrCode.getState() === 3)
+        : !!html5QrCode.isScanning;
+
+      if (isRunning) {
+        await html5QrCode.stop().catch(() => {});
+      }
+      try {
+        html5QrCode.clear();
+      } catch {}
     }
+  } catch (e) {
+    // Ignore harmless scanner shutdown errors
+  } finally {
+    isStopping = false;
   }
 }
 
 function close() {
-  stopScanner();
+  stopScanner().catch(() => {});
   emit('close');
 }
 
 onUnmounted(() => {
-  stopScanner();
+  stopScanner().catch(() => {});
 });
 </script>
 
