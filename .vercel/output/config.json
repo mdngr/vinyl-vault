@@ -1,0 +1,71 @@
+{
+  "version": 3,
+  "framework": {
+    "name": "nuxt",
+    "version": "3.21.11"
+  },
+  "overrides": {},
+  "routes": [
+    {
+      "src": "/_nuxt/(.*)",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      },
+      "continue": true
+    },
+    {
+      "src": "/_nuxt(.*)",
+      "headers": {
+        "cache-control": "public,max-age=31536000,immutable"
+      },
+      "continue": true
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "(?<__isr_route>/__nuxt_error)",
+      "dest": "/__fallback"
+    },
+    {
+      "src": "/search",
+      "dest": "/search"
+    },
+    {
+      "src": "/collection",
+      "dest": "/collection"
+    },
+    {
+      "src": "/auth",
+      "dest": "/auth"
+    },
+    {
+      "src": "/account",
+      "dest": "/account"
+    },
+    {
+      "src": "/__nuxt_error",
+      "dest": "/__nuxt_error"
+    },
+    {
+      "src": "/",
+      "dest": "/index"
+    },
+    {
+      "src": "/share/(?<id>[^/]+)",
+      "dest": "/share/[id]"
+    },
+    {
+      "src": "/items/(?<id>[^/]+)",
+      "dest": "/items/[id]"
+    },
+    {
+      "src": "/__nuxt_island/(?:.*)",
+      "dest": "/__nuxt_island/[...]"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/__fallback"
+    }
+  ]
+}

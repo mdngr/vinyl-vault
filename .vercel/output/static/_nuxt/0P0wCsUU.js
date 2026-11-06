@@ -1,0 +1,1 @@
+import{a5 as i,H as o,a6 as s,n as u}from"./DDEr0r--.js";const c=i(async r=>{let e,a;const t=o();if(t.loading&&([e,a]=s(()=>t.initializeAuth()),await e,a()),!t.user)return u("/auth")});export{c as default};
