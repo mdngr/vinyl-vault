@@ -1,6 +1,6 @@
 <template>
   <div class="search-panel">
-    <!-- Onglets par média (FILTRÉS SELON LES PRÉFÉRENCES DU COMPTE) -->
+    <!-- Onglets par média -->
     <div class="media-type-tabs">
       <button 
         v-for="type in activeMediaTabs"
@@ -50,20 +50,31 @@
       </button>
     </form>
 
-    <!-- 📷 MODALE SCANNER VIDÉO EN DIRECT -->
-    <div v-if="isScanning" class="scanner-modal">
+    <!-- 📷 MODALE SCANNER VIDÉO EN DIRECT EN CONTINU -->
+    <div v-if="isScanning" class="scanner-modal" @click.self="stopScanner">
       <div class="scanner-container">
         <div class="scanner-header">
-          <span>Scanner un code-barres</span>
+          <div class="header-title">
+            <span>📷 Scanner d'étagère ({{ searchTypeLabel }})</span>
+            <span v-if="scannedBatch.length > 0" class="badge-count">
+              {{ scannedBatch.length }} identifié(s)
+            </span>
+          </div>
           <button class="btn-close-scanner" @click="stopScanner">✕ Fermer</button>
         </div>
 
         <div class="video-wrapper">
           <div id="interactive-scanner" class="scanner-video"></div>
+          <div class="laser-line"></div>
+        </div>
+
+        <!-- Indicator de recherche API en arrière-plan -->
+        <div v-if="isResolvingApi" class="api-resolving-indicator">
+          <span class="spinner"></span> Identification du produit en cours...
         </div>
 
         <!-- Contrôles du zoom vidéo -->
-        <div class="scanner-zoom-controls">
+        <div v-if="hasZoomSupport" class="scanner-zoom-controls">
           <button 
             type="button" 
             class="btn-zoom" 
@@ -72,9 +83,7 @@
           >
             🔍 -
           </button>
-
           <span class="zoom-label">{{ parseFloat(scannerZoomValue).toFixed(1) }}x</span>
-
           <button 
             type="button" 
             class="btn-zoom" 
@@ -85,11 +94,49 @@
           </button>
         </div>
 
-        <p class="scanner-hint">Pointez la caméra vers le code EAN / ISBN</p>
+        <!-- Sélection de la destination par défaut pour les scans -->
+        <div class="target-selection">
+          <label>Destination des scans :</label>
+          <select v-model="defaultBatchTarget" class="target-select">
+            <option :value="false">➕ Collection</option>
+            <option :value="true">✨ Wishlist</option>
+          </select>
+        </div>
+
+        <!-- Tiroir des éléments identifiés en direct -->
+        <div v-if="scannedBatch.length > 0" class="scanned-batch-tray">
+          <div class="tray-header">
+            <h4>Éléments capturés</h4>
+            <button class="btn-clear-tray" @click="clearBatch">Vider</button>
+          </div>
+
+          <ul class="batch-list">
+            <li v-for="(item, idx) in scannedBatch" :key="item.id + '-' + idx" class="batch-item">
+              <img :src="item.cover || defaultCover" :alt="item.title" class="batch-cover" />
+              <div class="batch-details">
+                <span class="batch-item-title">{{ item.title }}</span>
+                <span class="batch-item-artist">{{ item.artist }}</span>
+              </div>
+
+              <select v-model="item.is_wishlist" class="batch-item-target">
+                <option :value="false">Collection</option>
+                <option :value="true">Wishlist</option>
+              </select>
+
+              <button class="btn-remove-batch" @click="removeFromBatch(idx)">✕</button>
+            </li>
+          </ul>
+
+          <button class="btn-confirm-batch" @click="saveAllBatch">
+            Ajouter les {{ scannedBatch.length }} élément(s)
+          </button>
+        </div>
+
+        <p class="scanner-hint">Balayez les codes EAN/ISBN des tranches sans arrêter la vidéo</p>
       </div>
     </div>
 
-    <!-- RÉSULTATS DE RECHERCHE -->
+    <!-- RÉSULTATS DE RECHERCHE MANUELLE -->
     <div v-if="results.length > 0" class="results-grid">
       <div 
         v-for="res in results" 
@@ -154,7 +201,6 @@ const config = useRuntimeConfig();
 
 const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
 
-// Réglages par défaut des types activés
 const userMediaSettings = ref({
   vinyl: true,
   book: true,
@@ -199,7 +245,6 @@ watch(() => authStore.user, () => {
   loadMediaSettings();
 }, { immediate: true });
 
-// Filtre uniquement les onglets activés dans le compte
 const activeMediaTabs = computed(() => {
   const allTabs = [
     { key: 'vinyl', label: 'Musique', emoji: '🎵' },
@@ -214,7 +259,11 @@ const activeMediaTabs = computed(() => {
 
 const searchType = ref('vinyl');
 
-// S'assure que l'onglet actif existe toujours dans les onglets autorisés
+const searchTypeLabel = computed(() => {
+  const current = activeMediaTabs.value.find(t => t.key === searchType.value);
+  return current ? current.label : 'Média';
+});
+
 watch(activeMediaTabs, (newTabs) => {
   if (newTabs.length > 0 && !newTabs.some(t => t.key === searchType.value)) {
     searchType.value = newTabs[0].key;
@@ -225,12 +274,19 @@ const query = ref('');
 const loading = ref(false);
 const results = ref([]);
 
-// Scanner refs
+// Continuous Scanning & Batch Storage State
 const isScanning = ref(false);
 const fileInputRef = ref(null);
 let html5QrCodeScanner = null;
 
+const scannedBatch = ref([]);
+const scannedCodesSet = ref(new Set());
+const defaultBatchTarget = ref(false); // false = Collection, true = Wishlist
+const isResolvingApi = ref(false);
+const lastScanTimestamp = ref(0);
+
 // Zoom scanner vidéo
+const hasZoomSupport = ref(false);
 const scannerZoomValue = ref(1);
 const scannerZoomMin = ref(1);
 const scannerZoomMax = ref(3);
@@ -247,7 +303,6 @@ const placeholderText = computed(() => {
   return 'Rechercher...';
 });
 
-// Normalisation des formats renvoyés par l'API Discogs
 function mapDiscogsFormat(formatsArray) {
   if (!formatsArray || !Array.isArray(formatsArray) || formatsArray.length === 0) {
     return 'vinyl_lp';
@@ -303,25 +358,33 @@ async function handleScanClick() {
   }
 }
 
-// 🔴 SCANNER VIDÉO EN DIRECT
+// 🔴 SCANNER VIDÉO EN DIRECT EN CONTINU AVEC APPEL API AUTOMATIQUE
 async function startLiveScanner() {
   if (!import.meta.client) return;
 
+  scannedBatch.value = [];
+  scannedCodesSet.value.clear();
   isScanning.value = true;
   scannerZoomValue.value = 1;
+  hasZoomSupport.value = false;
   await nextTick();
 
   try {
-    const { Html5Qrcode } = await import('html5-qrcode');
-    html5QrCodeScanner = new Html5Qrcode("interactive-scanner");
+    const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+
+    const formatsSupported = [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128
+    ];
+
+    html5QrCodeScanner = new Html5Qrcode("interactive-scanner", { formatsToSupport: formatsSupported });
     await html5QrCodeScanner.start(
       { facingMode: "environment" },
-      { fps: 15, qrbox: { width: 250, height: 140 } },
-      (decodedText) => {
-        query.value = decodedText;
-        stopScanner();
-        searchApi();
-      },
+      { fps: 20, qrbox: { width: 260, height: 140 } },
+      (decodedText) => handleContinuousBarcodeDetect(decodedText),
       () => {}
     );
 
@@ -330,6 +393,141 @@ async function startLiveScanner() {
     stopScanner();
     fileInputRef.value?.click();
   }
+}
+
+async function handleContinuousBarcodeDetect(barcode) {
+  const now = Date.now();
+
+  // Cooldown de 1.5s pour ne pas re-traiter le même code en boucle pendant le survol
+  if (scannedCodesSet.value.has(barcode) && (now - lastScanTimestamp.value < 1500)) {
+    return;
+  }
+
+  if (!scannedCodesSet.value.has(barcode)) {
+    scannedCodesSet.value.add(barcode);
+    lastScanTimestamp.value = now;
+
+    if (navigator.vibrate) navigator.vibrate(80);
+
+    // Résolution API en arrière-plan sans stopper le flux vidéo
+    isResolvingApi.value = true;
+    try {
+      const itemData = await fetchSingleItemByBarcode(barcode, searchType.value);
+      if (itemData) {
+        scannedBatch.value.push({
+          ...itemData,
+          is_wishlist: defaultBatchTarget.value
+        });
+      }
+    } catch (e) {
+      console.warn("Échec résolution API pour barcode:", barcode, e);
+    } finally {
+      isResolvingApi.value = false;
+    }
+  }
+}
+
+// 🔍 Fonction de résolution API à l'unité selon le type de média
+async function fetchSingleItemByBarcode(code, type) {
+  const discogsToken = config.public?.discogsToken || '';
+
+  if (type === 'vinyl') {
+    const res = await fetch(`https://api.discogs.com/database/search?barcode=${encodeURIComponent(code)}&token=${discogsToken}`);
+    const data = await res.json();
+    const item = data.results?.[0];
+    if (item) {
+      return {
+        id: item.id,
+        discogs_id: item.id,
+        title: item.title.includes(' - ') ? item.title.split(' - ')[1] : item.title,
+        artist: item.title.includes(' - ') ? item.title.split(' - ')[0] : 'Artiste inconnu',
+        year: item.year || '',
+        cover: item.cover_image || item.thumb,
+        type: 'vinyl',
+        detectedFormat: mapDiscogsFormat(item.format)
+      };
+    }
+  } else if (type === 'book') {
+    const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(code)}&limit=1`);
+    const data = await res.json();
+    const doc = data.docs?.[0];
+    if (doc) {
+      return {
+        id: doc.key,
+        title: doc.title,
+        artist: doc.author_name ? doc.author_name.join(', ') : 'Auteur inconnu',
+        year: doc.first_publish_year || '',
+        cover: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : null,
+        type: 'book',
+        detectedFormat: 'paperback'
+      };
+    }
+  } else if (type === 'movie') {
+    const tmdbToken = config.public?.tmdbToken;
+    const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${tmdbToken}&query=${encodeURIComponent(code)}&language=fr-FR`);
+    const data = await res.json();
+    const movie = data.results?.[0];
+    if (movie) {
+      return {
+        id: movie.id,
+        title: movie.title,
+        artist: movie.release_date ? movie.release_date.split('-')[0] : 'Film',
+        year: movie.release_date ? movie.release_date.split('-')[0] : '',
+        cover: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : null,
+        type: 'movie',
+        detectedFormat: 'bluray'
+      };
+    }
+  } else if (type === 'videogame') {
+    const rawgToken = config.public?.rawgToken || '';
+    const res = await fetch(`https://api.rawg.io/api/games?key=${rawgToken}&search=${encodeURIComponent(code)}&page_size=1`);
+    const data = await res.json();
+    const game = data.results?.[0];
+    if (game) {
+      const platformNames = (game.platforms || []).map(p => p.platform.name).join(', ');
+      return {
+        id: game.id,
+        title: game.name,
+        artist: platformNames || 'Jeu vidéo',
+        year: game.released ? game.released.split('-')[0] : '',
+        cover: game.background_image || null,
+        type: 'videogame',
+        detectedFormat: game.platforms?.some(p => p.platform.name.toLowerCase().includes('switch')) ? 'cartridge' : 'disc'
+      };
+    }
+  }
+
+  // Fallback direct si l'API ne renvoie rien
+  return {
+    id: 'scanned-' + code,
+    title: `Code: ${code}`,
+    artist: 'Résultat brut',
+    year: '',
+    cover: null,
+    type: type,
+    detectedFormat: 'standard'
+  };
+}
+
+function removeFromBatch(index) {
+  const item = scannedBatch.value[index];
+  if (item) {
+    scannedCodesSet.value.delete(item.id);
+    scannedBatch.value.splice(index, 1);
+  }
+}
+
+function clearBatch() {
+  scannedBatch.value = [];
+  scannedCodesSet.value.clear();
+}
+
+async function saveAllBatch() {
+  for (const item of scannedBatch.value) {
+    await addItem(item, item.is_wishlist);
+  }
+  clearBatch();
+  stopScanner();
 }
 
 function setupScannerZoom() {
@@ -357,6 +555,7 @@ function setupScannerZoom() {
         scannerZoomMax.value = 3;
         scannerZoomValue.value = 1;
       }
+      hasZoomSupport.value = true;
     }
 
     if (attempts > 20) clearInterval(interval);
@@ -393,6 +592,7 @@ function stopScanner() {
   }
   scannerVideoElement = null;
   scannerVideoTrack = null;
+  hasZoomSupport.value = false;
 
   if (html5QrCodeScanner && isScanning.value) {
     html5QrCodeScanner.stop().catch(() => {}).finally(() => {
@@ -403,7 +603,6 @@ function stopScanner() {
   }
 }
 
-// 📸 FALLBACK PHOTO
 async function handleFileUpload(event) {
   if (!import.meta.client) return;
   const file = event.target.files[0];
@@ -417,7 +616,7 @@ async function handleFileUpload(event) {
     query.value = decodedText;
     searchApi();
   } catch (err) {
-    alert("Aucun code-barres n'a pu être détecté sur cette photo. Essayez d'améliorer la luminosité ou saisissez votre recherche manuellement.");
+    alert("Aucun code-barres n'a pu être détecté sur cette photo.");
   } finally {
     loading.value = false;
     event.target.value = '';
@@ -428,7 +627,7 @@ onUnmounted(() => {
   stopScanner();
 });
 
-// 🔍 RECHERCHE MULTI-API (Discogs / OpenLibrary / TMDB / BoardGameGeek / RAWG)
+// RECHERCHE MANUELLE MULTI-API
 async function searchApi() {
   if (!query.value.trim()) return;
   loading.value = true;
@@ -467,7 +666,7 @@ async function searchApi() {
       }));
 
     } else if (searchType.value === 'movie') {
-      const tmdbToken = config.public?.tmdbToken
+      const tmdbToken = config.public?.tmdbToken;
       const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${tmdbToken}&query=${encodeURIComponent(query.value)}&language=fr-FR`);
       const data = await res.json();
       results.value = (data.results || []).slice(0, 12).map(movie => ({
@@ -481,7 +680,7 @@ async function searchApi() {
       }));
 
     } else if (searchType.value === 'boardgame') {
-      const res = await fetch(`https://api.boardgameatlas.com/api/search?name=${encodeURIComponent(query)}&limit=10&client_id=`);
+      const res = await fetch(`https://api.boardgameatlas.com/api/search?name=${encodeURIComponent(query.value)}&limit=10&client_id=`);
       if (res.ok) {
         const data = await res.json();
         results.value = (data || []).slice(0, 12).map(game => ({
@@ -497,19 +696,10 @@ async function searchApi() {
 
     } else if (searchType.value === 'videogame') {
       const rawgToken = config.public?.rawgToken || '';
-
-      if (!rawgToken) {
-        console.error("⚠️ RAWG Token non défini dans runtimeConfig.public.rawgToken !");
-      }
-
       const res = await fetch(
         `https://api.rawg.io/api/games?key=${rawgToken}&search=${encodeURIComponent(query.value)}&page_size=12`
       );
       const data = await res.json();
-
-      if (data.error) {
-        console.error("Erreur renvoyée par RAWG :", data.error);
-      }
 
       results.value = (data.results || []).map(game => {
         const platformNames = (game.platforms || []).map(p => p.platform.name).join(', ');
@@ -566,50 +756,64 @@ async function moveToCollection(existingItem) {
 .hidden-file-input { display: none; }
 .btn-submit { width: 100%; padding: 14px; background: #3b82f6; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
 
-/* MODALE SCANNER VIDÉO */
-.scanner-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.95); display: flex; justify-content: center; align-items: center; z-index: 4000; padding: 16px; }
-.scanner-container { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 20px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+/* MODALE SCANNER VIDÉO CONTINU */
+.scanner-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.92); display: flex; justify-content: center; align-items: center; z-index: 4000; padding: 16px; }
+.scanner-container { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 20px; width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .scanner-header { display: flex; justify-content: space-between; align-items: center; width: 100%; color: #fff; font-weight: 700; }
+.header-title { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.badge-count { background: #3b82f6; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
 .btn-close-scanner { background: rgba(255, 255, 255, 0.1); border: none; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; cursor: pointer; }
-.video-wrapper { width: 100%; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; background: #000; }
+
+.video-wrapper { width: 100%; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; background: #000; position: relative; }
 .scanner-video { width: 100%; height: 100%; }
-.scanner-hint { font-size: 0.8rem; color: #a1a1aa; text-align: center; margin: 0; }
 
-:deep(#interactive-scanner video) {
-  transition: transform 0.1s ease-out;
-  object-fit: cover;
+/* 🔴 Ligne Laser Animée */
+.laser-line {
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  width: 80%;
+  height: 2px;
+  background: #ef4444;
+  box-shadow: 0 0 10px #ef4444, 0 0 18px #ef4444;
+  pointer-events: none;
+  animation: scan-anim 2s infinite ease-in-out;
+  z-index: 10;
 }
 
-.scanner-zoom-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  width: 100%;
+@keyframes scan-anim {
+  0% { transform: translateY(-35px); opacity: 0.5; }
+  50% { transform: translateY(35px); opacity: 1; }
+  100% { transform: translateY(-35px); opacity: 0.5; }
 }
 
-.btn-zoom {
-  background: #27272a;
-  border: 1px solid #3f3f46;
-  color: #fff;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background 0.2s;
-}
+.api-resolving-indicator { font-size: 0.75rem; color: #60a5fa; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #60a5fa; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-.btn-zoom:hover:not(:disabled) { background: #3f3f46; }
+.target-selection { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #27272a; border-radius: 8px; color: #a1a1aa; font-size: 0.8rem; }
+.target-select, .batch-item-target { background: #18181b; border: 1px solid #3f3f46; color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; }
+
+/* Tiroir des éléments scannés */
+.scanned-batch-tray { background: #27272a; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.tray-header { display: flex; justify-content: space-between; align-items: center; }
+.tray-header h4 { margin: 0; font-size: 0.85rem; color: #fff; }
+.btn-clear-tray { background: none; border: none; color: #ef4444; font-size: 0.75rem; cursor: pointer; }
+.batch-list { list-style: none; padding: 0; margin: 0; max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.batch-item { display: flex; align-items: center; gap: 10px; background: #18181b; padding: 6px 8px; border-radius: 8px; }
+.batch-cover { width: 32px; height: 42px; object-fit: cover; border-radius: 4px; }
+.batch-details { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; }
+.batch-item-title { font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.batch-item-artist { font-size: 0.7rem; color: #a1a1aa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn-remove-batch { background: none; border: none; color: #71717a; cursor: pointer; padding: 2px 6px; }
+.btn-confirm-batch { background: #3b82f6; color: #fff; border: none; padding: 10px; border-radius: 8px; font-weight: 700; font-size: 0.85rem; cursor: pointer; margin-top: 4px; }
+
+:deep(#interactive-scanner video) { transition: transform 0.1s ease-out; object-fit: cover; }
+.scanner-zoom-controls { display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; }
+.btn-zoom { background: #27272a; border: 1px solid #3f3f46; color: #fff; padding: 6px 14px; border-radius: 8px; font-weight: 700; font-size: 0.85rem; cursor: pointer; }
 .btn-zoom:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.zoom-label {
-  color: #a1a1aa;
-  font-size: 0.85rem;
-  font-weight: 600;
-  min-width: 45px;
-  text-align: center;
-}
+.zoom-label { color: #a1a1aa; font-size: 0.85rem; font-weight: 600; min-width: 45px; text-align: center; }
+.scanner-hint { font-size: 0.75rem; color: #71717a; text-align: center; margin: 0; }
 
 /* RÉSULTATS */
 .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-top: 12px; }
