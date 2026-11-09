@@ -125,7 +125,6 @@ watch(() => props.isOpen, async (newVal) => {
     scannedIsbns.value.clear();
     errorMessage.value = '';
     
-    // Attendre deux ticks d'horloge DOM pour s'assurer que le container v-if existe
     await nextTick();
     await new Promise(r => setTimeout(r, 50));
     initScanner();
@@ -138,11 +137,11 @@ async function initScanner() {
   if (!import.meta.client) return;
   errorMessage.value = '';
 
-  // 1. Tenter BarcodeDetector natif
+  // 1. Tenter BarcodeDetector natif (ultra rapide grâce à l'accélération matérielle du GPU)
   if ('BarcodeDetector' in window) {
     try {
       const supportedFormats = await window.BarcodeDetector.getSupportedFormats();
-      if (supportedFormats.includes('ean_13') || supportedFormats.includes('code_128')) {
+      if (supportedFormats.includes('ean_13')) {
         const started = await startNativeScanner();
         if (started) return;
       }
@@ -157,13 +156,17 @@ async function initScanner() {
 
 async function startNativeScanner() {
   try {
+    // Restreindre aux formats EAN-13 et EAN-8 accélère la détection native
     nativeDetector = new window.BarcodeDetector({
-      formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128']
+      formats: ['ean_13', 'ean_8']
     });
 
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: "environment" }
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        focusMode: { ideal: "continuous" }
       }
     });
 
@@ -219,22 +222,18 @@ async function startLibraryScanner() {
   try {
     const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
 
-    // Vérifier l'existence de l'élément conteneur
     const container = document.getElementById("reader-vue");
     if (!container) {
       errorMessage.value = "Conteneur caméra introuvable dans le DOM.";
       return;
     }
 
-    // Nettoyage préalable des éléments enfants
     container.innerHTML = '<div class="laser-line"></div>';
 
+    // Se limiter aux EAN (Livres, Vinyles, Jeux)
     const formatsSupported = [
       Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODE_128
+      Html5QrcodeSupportedFormats.EAN_8
     ];
 
     html5QrCode = new Html5Qrcode("reader-vue", { 
@@ -243,10 +242,10 @@ async function startLibraryScanner() {
     });
 
     const config = {
-      fps: 15,
+      fps: 30, // ⚡ Augmenté de 15 à 30 FPS pour une détection ultra rapide
       qrbox: (viewfinderWidth, viewfinderHeight) => ({
-        width: Math.floor(viewfinderWidth * 0.9),
-        height: Math.floor(viewfinderHeight * 0.4)
+        width: Math.floor(viewfinderWidth * 0.95), // Zone de scan élargie
+        height: Math.floor(viewfinderHeight * 0.6)
       })
     };
 
@@ -283,7 +282,7 @@ function initLibraryZoom() {
     }
 
     if (attempts > 20) clearInterval(interval);
-  }, 150);
+  }, 100);
 }
 
 function applyHardwareZoom() {
@@ -327,12 +326,13 @@ function updateZoom() {
 function handleContinuousScan(barcode) {
   const now = Date.now();
 
-  if (scannedIsbns.value.has(barcode) && (now - lastScanTimestamp.value < 1500)) {
+  // ⚡ Cooldown réduit à 600ms pour enchainer rapidement plusieurs livres différents
+  if (scannedIsbns.value.has(barcode) && (now - lastScanTimestamp.value < 600)) {
     return;
   }
 
   if (!scannedIsbns.value.has(barcode)) {
-    if (navigator.vibrate) navigator.vibrate(80);
+    if (navigator.vibrate) navigator.vibrate(50); // Vibreur plus court
 
     scannedIsbns.value.add(barcode);
     scannedList.value.push({
@@ -511,20 +511,20 @@ onUnmounted(() => {
 .laser-line {
   position: absolute;
   top: 50%;
-  left: 10%;
-  width: 80%;
+  left: 5%;
+  width: 90%;
   height: 2px;
   background: #ef4444;
   box-shadow: 0 0 10px #ef4444, 0 0 18px #ef4444;
   z-index: 10;
   pointer-events: none;
-  animation: scan-anim 2s infinite ease-in-out;
+  animation: scan-anim 1.5s infinite ease-in-out;
 }
 
 @keyframes scan-anim {
-  0% { transform: translateY(-40px); opacity: 0.6; }
-  50% { transform: translateY(40px); opacity: 1; }
-  100% { transform: translateY(-40px); opacity: 0.6; }
+  0% { transform: translateY(-50px); opacity: 0.6; }
+  50% { transform: translateY(50px); opacity: 1; }
+  100% { transform: translateY(-50px); opacity: 0.6; }
 }
 
 .zoom-controls {
