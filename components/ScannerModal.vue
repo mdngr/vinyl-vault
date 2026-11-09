@@ -14,11 +14,12 @@
 
       <!-- Zone Caméra avec Ligne Rouge de Scan -->
       <div id="reader-vue" class="scanner-viewport">
+        <video ref="videoRef" autoplay playsinline muted class="native-video"></video>
         <div class="laser-line"></div>
       </div>
 
       <!-- Contrôles du Zoom -->
-      <div v-if="hasZoomSupport" class="zoom-controls">
+      <div class="zoom-controls">
         <button 
           type="button" 
           class="btn-zoom" 
@@ -84,17 +85,18 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'batch-add']);
 
-let html5QrCode = null;
+const videoRef = ref(null);
+let mediaStream = null;
 let videoTrack = null;
-let videoElement = null;
+let nativeDetector = null;
+let animationFrameId = null;
+let html5QrCode = null;
+let isUsingNative = false;
 
-const hasZoomSupport = ref(false);
-const isHardwareZoom = ref(false);
-const zoomValue = ref(2); // ⚡ Zoom forcé par défaut à 2x
-const zoomMin = ref(1);
-const zoomMax = ref(4);
+const zoomValue = ref(2.0); // Zoom forcé à 2x par défaut
+const zoomMin = ref(1.0);
+const zoomMax = ref(4.0);
 
-// Scanner Continu
 const scannedList = ref([]);
 const scannedIsbns = ref(new Set());
 const defaultTarget = ref('library');
@@ -105,15 +107,90 @@ watch(() => props.isOpen, async (newVal) => {
     scannedList.value = [];
     scannedIsbns.value.clear();
     await nextTick();
-    startScanner();
+    initScanner();
   } else {
     stopScanner();
   }
 });
 
-async function startScanner() {
+async function initScanner() {
   if (!import.meta.client) return;
 
+  // 1. Tenter le scanner natif Safari / Android (BarcodeDetector API)
+  if ('BarcodeDetector' in window) {
+    try {
+      const supportedFormats = await window.BarcodeDetector.getSupportedFormats();
+      if (supportedFormats.includes('ean_13') || supportedFormats.includes('code_128')) {
+        const started = await startNativeScanner();
+        if (started) return;
+      }
+    } catch (e) {
+      console.warn("Échec d'initialisation du BarcodeDetector natif, bascule sur html5-qrcode...", e);
+    }
+  }
+
+  // 2. Fallback sur la bibliothèque html5-qrcode
+  startLibraryScanner();
+}
+
+// 🟢 MODE 1 : LECTEUR NATIF (BarcodeDetector API)
+async function startNativeScanner() {
+  try {
+    nativeDetector = new window.BarcodeDetector({
+      formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128']
+    });
+
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { min: 1280, ideal: 1920 },
+        height: { min: 720, ideal: 1080 }
+      }
+    });
+
+    if (videoRef.value) {
+      videoRef.value.srcObject = mediaStream;
+      await videoRef.value.play();
+      videoTrack = mediaStream.getVideoTracks()[0];
+      isUsingNative = true;
+
+      applyZoom();
+      processNativeFrame();
+      return true;
+    }
+  } catch (err) {
+    console.warn("Erreur démarrage flux vidéo natif :", err);
+  }
+  return false;
+}
+
+function processNativeFrame() {
+  if (!isUsingNative || !videoRef.value || videoRef.value.readyState !== 4) {
+    animationFrameId = requestAnimationFrame(processNativeFrame);
+    return;
+  }
+
+  nativeDetector.detect(videoRef.value)
+    .then((barcodes) => {
+      if (barcodes.length > 0) {
+        for (const barcode of barcodes) {
+          if (barcode.rawValue) {
+            handleContinuousScan(barcode.rawValue);
+          }
+        }
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      if (isUsingNative) {
+        animationFrameId = requestAnimationFrame(processNativeFrame);
+      }
+    });
+}
+
+// 🟠 MODE 2 : FALLBACK BIBLIOTHÈQUE (html5-qrcode)
+async function startLibraryScanner() {
+  isUsingNative = false;
   try {
     const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
 
@@ -130,38 +207,90 @@ async function startScanner() {
       verbose: false
     });
 
+    const videoConstraints = {
+      facingMode: "environment",
+      width: { min: 1280, ideal: 1920 },
+      height: { min: 720, ideal: 1080 }
+    };
+
     const config = {
       fps: 15,
-      qrbox: (viewfinderWidth, viewfinderHeight) => {
-        // Viseur rectangulaire large adapté aux codes-barres 1D tranches
-        return {
-          width: Math.floor(viewfinderWidth * 0.85),
-          height: Math.floor(viewfinderHeight * 0.35)
-        };
-      },
+      qrbox: (viewfinderWidth, viewfinderHeight) => ({
+        width: Math.floor(viewfinderWidth * 0.9),
+        height: Math.floor(viewfinderHeight * 0.4)
+      }),
       experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true // Utilise l'API matérielle native du mobile
+        useBarCodeDetectorIfSupported: true
       }
     };
 
     await html5QrCode.start(
-      { facingMode: "environment" },
+      videoConstraints,
       config,
       (decodedText) => handleContinuousScan(decodedText),
       () => {}
     );
 
-    setupZoom();
+    initLibraryZoom();
   } catch (err) {
     console.error("Erreur scanner caméra :", err);
     close();
   }
 }
 
+function initLibraryZoom() {
+  let attempts = 0;
+  const interval = setInterval(() => {
+    const vElem = document.querySelector("#reader-vue video");
+    attempts++;
+
+    if (vElem && vElem.srcObject) {
+      clearInterval(interval);
+      const stream = vElem.srcObject;
+      videoTrack = stream.getVideoTracks()[0];
+      applyZoom();
+    }
+
+    if (attempts > 20) clearInterval(interval);
+  }, 150);
+}
+
+// 🔍 GESTION DU ZOOM UNIFIÉE
+function applyZoom() {
+  const factor = parseFloat(zoomValue.value);
+
+  // Zoom matériel WebRTC (Chrome Android)
+  if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
+    videoTrack.applyConstraints({
+      advanced: [{ zoom: factor }]
+    }).catch(() => {});
+  }
+
+  // Zoom CSS Forcé (iOS Safari)
+  const targetVideo = isUsingNative ? videoRef.value : document.querySelector("#reader-vue video");
+  if (targetVideo) {
+    targetVideo.style.transform = `scale(${factor})`;
+    targetVideo.style.transformOrigin = `center center`;
+  }
+}
+
+function zoomIn() {
+  if (zoomValue.value < zoomMax.value) {
+    zoomValue.value = Math.min(parseFloat((zoomValue.value + 0.3).toFixed(1)), zoomMax.value);
+    applyZoom();
+  }
+}
+
+function zoomOut() {
+  if (zoomValue.value > zoomMin.value) {
+    zoomValue.value = Math.max(parseFloat((zoomValue.value - 0.3).toFixed(1)), zoomMin.value);
+    applyZoom();
+  }
+}
+
 function handleContinuousScan(barcode) {
   const now = Date.now();
 
-  // Cooldown de 1.5s pour éviter de relire 10 fois le même code lors du survol
   if (scannedIsbns.value.has(barcode) && (now - lastScanTimestamp.value < 1500)) {
     return;
   }
@@ -197,79 +326,24 @@ function confirmBatch() {
   close();
 }
 
-function setupZoom() {
-  if (!import.meta.client) return;
-  let attempts = 0;
-
-  const checkVideo = setInterval(() => {
-    videoElement = document.querySelector("#reader-vue video");
-    attempts++;
-
-    if (videoElement && videoElement.srcObject) {
-      clearInterval(checkVideo);
-
-      const stream = videoElement.srcObject;
-      videoTrack = stream.getVideoTracks()[0];
-
-      const capabilities = videoTrack?.getCapabilities ? videoTrack.getCapabilities() : {};
-
-      if (capabilities.zoom) {
-        // Zoom Optique / Matériel (Android Chrome)
-        isHardwareZoom.value = true;
-        zoomMin.value = capabilities.zoom.min || 1;
-        zoomMax.value = Math.min(capabilities.zoom.max || 4, 4);
-        zoomValue.value = Math.min(2, zoomMax.value); // Forcer 2x
-      } else {
-        // Zoom Numérique CSS (iOS / Safari)
-        isHardwareZoom.value = false;
-        zoomMin.value = 1;
-        zoomMax.value = 4;
-        zoomValue.value = 2; // Forcer 2x
-      }
-
-      hasZoomSupport.value = true;
-      applyZoom(); // Apply Initial 2x Zoom immediately
-    }
-
-    if (attempts > 20) {
-      clearInterval(checkVideo);
-    }
-  }, 200);
-}
-
-function zoomIn() {
-  if (zoomValue.value < zoomMax.value) {
-    zoomValue.value = Math.min(parseFloat((zoomValue.value + 0.3).toFixed(1)), zoomMax.value);
-    applyZoom();
-  }
-}
-
-function zoomOut() {
-  if (zoomValue.value > zoomMin.value) {
-    zoomValue.value = Math.max(parseFloat((zoomValue.value - 0.3).toFixed(1)), zoomMin.value);
-    applyZoom();
-  }
-}
-
-function applyZoom() {
-  const zoomFactor = parseFloat(zoomValue.value);
-
-  if (isHardwareZoom.value && videoTrack) {
-    videoTrack.applyConstraints({ advanced: [{ zoom: zoomFactor }] }).catch(() => {});
-  } else if (videoElement) {
-    videoElement.style.transform = `scale(${zoomFactor})`;
-    videoElement.style.transformOrigin = `center center`;
-  }
-}
-
 async function stopScanner() {
-  if (videoElement) {
-    videoElement.style.transform = 'none';
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(t => t.stop());
+    mediaStream = null;
+  }
+
+  const targetVideo = isUsingNative ? videoRef.value : document.querySelector("#reader-vue video");
+  if (targetVideo) {
+    targetVideo.style.transform = 'none';
   }
 
   videoTrack = null;
-  videoElement = null;
-  hasZoomSupport.value = false;
+  isUsingNative = false;
 
   if (html5QrCode && html5QrCode.isScanning) {
     try {
@@ -352,12 +426,22 @@ onUnmounted(() => {
   overflow: hidden;
   background: #000;
   position: relative;
-  min-height: 220px;
+  min-height: 240px;
+}
+
+.native-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.15s ease-out;
 }
 
 :deep(#reader-vue video) {
-  transition: transform 0.1s ease-out;
-  object-fit: cover;
+  transition: transform 0.15s ease-out !important;
+  object-fit: cover !important;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* 🔴 LIGNE ROUGE INTERACTIVE DE SCAN */
