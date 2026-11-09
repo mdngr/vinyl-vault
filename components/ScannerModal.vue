@@ -151,8 +151,8 @@ async function startNativeScanner() {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
-        width: { min: 1280, ideal: 1920 },
-        height: { min: 720, ideal: 1080 }
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
       }
     });
 
@@ -171,6 +171,10 @@ async function startNativeScanner() {
   } catch (err) {
     console.warn("Erreur flux vidéo natif :", err);
     isUsingNative.value = false;
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(t => t.stop());
+      mediaStream = null;
+    }
   }
   return false;
 }
@@ -212,6 +216,13 @@ async function startLibraryScanner() {
       Html5QrcodeSupportedFormats.CODE_128
     ];
 
+    // Nettoyage préalable du DOM
+    const readerElem = document.getElementById("reader-vue");
+    if (readerElem) {
+      const existingVideos = readerElem.querySelectorAll("video");
+      existingVideos.forEach(v => v.remove());
+    }
+
     html5QrCode = new Html5Qrcode("reader-vue", { 
       formatsToSupport: formatsSupported,
       verbose: false
@@ -219,8 +230,8 @@ async function startLibraryScanner() {
 
     const videoConstraints = {
       facingMode: "environment",
-      width: { min: 1280, ideal: 1920 },
-      height: { min: 720, ideal: 1080 }
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
     };
 
     const config = {
@@ -228,10 +239,7 @@ async function startLibraryScanner() {
       qrbox: (viewfinderWidth, viewfinderHeight) => ({
         width: Math.floor(viewfinderWidth * 0.9),
         height: Math.floor(viewfinderHeight * 0.4)
-      }),
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true
-      }
+      })
     };
 
     await html5QrCode.start(
@@ -243,8 +251,8 @@ async function startLibraryScanner() {
 
     initLibraryZoom();
   } catch (err) {
-    console.error("Erreur scanner caméra :", err);
-    close();
+    console.error("Erreur scanner caméra fallback :", err);
+    // Ne ferme pas le modal brutalement sur simple avertissement caméra
   }
 }
 
@@ -362,13 +370,16 @@ async function stopScanner() {
   videoTrack = null;
   isUsingNative.value = false;
 
-  if (html5QrCode && html5QrCode.isScanning) {
+  if (html5QrCode) {
     try {
-      await html5QrCode.stop();
+      if (html5QrCode.isScanning) {
+        await html5QrCode.stop();
+      }
       html5QrCode.clear();
     } catch (e) {
       console.warn("Erreur arrêt scanner :", e);
     }
+    html5QrCode = null;
   }
 }
 
