@@ -24,11 +24,11 @@
           class="search-input"
         />
         
-        <!-- Bouton Scanner -->
+        <!-- Bouton Scanner : ouvre le modal dédié -->
         <button 
           type="button" 
           class="btn-scan-inside" 
-          @click="handleScanClick" 
+          @click="isScannerModalOpen = true" 
           title="Scanner un code-barres"
         >
           📷
@@ -50,99 +50,12 @@
       </button>
     </form>
 
-    <!-- 📷 MODALE SCANNER VIDÉO EN CONTINU -->
-    <div v-if="isScanning" class="scanner-modal" @click.self="stopScanner">
-      <div class="scanner-container">
-        <div class="scanner-header">
-          <div class="header-title">
-            <span>📷 Scanner d'étagère ({{ searchTypeLabel }})</span>
-            <span v-if="scannedBatch.length > 0" class="badge-count">
-              {{ scannedBatch.length }} identifié(s)
-            </span>
-          </div>
-          <button class="btn-close-scanner" @click="stopScanner">✕ Fermer</button>
-        </div>
-
-        <div class="video-wrapper">
-          <video 
-            ref="nativeVideoRef" 
-            autoplay 
-            playsinline 
-            muted 
-            class="native-video-elem"
-            :style="{ transform: `scale(${scannerZoomValue})`, transformOrigin: 'center center' }"
-          ></video>
-          <div id="interactive-scanner" class="scanner-video"></div>
-          <div class="laser-line"></div>
-        </div>
-
-        <!-- Indicateur de résolution API -->
-        <div v-if="isResolvingApi" class="api-resolving-indicator">
-          <span class="spinner"></span> Identification du produit en cours...
-        </div>
-
-        <!-- Contrôles du zoom vidéo -->
-        <div class="scanner-zoom-controls">
-          <button 
-            type="button" 
-            class="btn-zoom" 
-            @click="zoomScannerOut" 
-            :disabled="scannerZoomValue <= scannerZoomMin"
-          >
-            🔍 -
-          </button>
-          <span class="zoom-label">{{ parseFloat(scannerZoomValue).toFixed(1) }}x</span>
-          <button 
-            type="button" 
-            class="btn-zoom" 
-            @click="zoomScannerIn" 
-            :disabled="scannerZoomValue >= scannerZoomMax"
-          >
-            🔍 +
-          </button>
-        </div>
-
-        <!-- Choix destination globale -->
-        <div class="target-selection">
-          <label>Destination des scans :</label>
-          <select v-model="defaultBatchTarget" class="target-select">
-            <option :value="false">➕ Collection</option>
-            <option :value="true">✨ Wishlist</option>
-          </select>
-        </div>
-
-        <!-- Tiroir des éléments identifiés par l'API -->
-        <div v-if="scannedBatch.length > 0" class="scanned-batch-tray">
-          <div class="tray-header">
-            <h4>Éléments capturés</h4>
-            <button class="btn-clear-tray" @click="clearBatch">Vider</button>
-          </div>
-
-          <ul class="batch-list">
-            <li v-for="(item, idx) in scannedBatch" :key="item.id + '-' + idx" class="batch-item">
-              <img :src="item.cover || defaultCover" :alt="item.title" class="batch-cover" />
-              <div class="batch-details">
-                <span class="batch-item-title">{{ item.title }}</span>
-                <span class="batch-item-artist">{{ item.artist }}</span>
-              </div>
-
-              <select v-model="item.is_wishlist" class="batch-item-target">
-                <option :value="false">Collection</option>
-                <option :value="true">Wishlist</option>
-              </select>
-
-              <button class="btn-remove-batch" @click="removeFromBatch(idx)">✕</button>
-            </li>
-          </ul>
-
-          <button class="btn-confirm-batch" @click="saveAllBatch">
-            Ajouter les {{ scannedBatch.length }} élément(s)
-          </button>
-        </div>
-
-        <p class="scanner-hint">Pointez la caméra vers le code EAN / ISBN sur les tranches</p>
-      </div>
-    </div>
+    <!-- 📷 COMPOSANT MODALE SCANNER -->
+    <ScannerModal 
+      :is-open="isScannerModalOpen" 
+      @close="isScannerModalOpen = false" 
+      @batch-add="handleBatchAddFromModal" 
+    />
 
     <!-- RÉSULTATS DE RECHERCHE MANUELLE -->
     <div v-if="results.length > 0" class="results-grid">
@@ -198,16 +111,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useCollectionStore } from '~/stores/collection';
 import { useAuthStore } from '~/stores/auth';
 import { getFormatLabel } from '~/constants/formats';
+import ScannerModal from '~/components/ScannerModal.vue';
 
 const collectionStore = useCollectionStore();
 const authStore = useAuthStore();
 const config = useRuntimeConfig();
 
 const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
+const isScannerModalOpen = ref(false);
+const fileInputRef = ref(null);
 
 const userMediaSettings = ref({
   vinyl: true,
@@ -219,7 +135,6 @@ const userMediaSettings = ref({
 
 function loadMediaSettings() {
   const metaSettings = authStore.user?.user_metadata?.media_settings;
-
   if (metaSettings) {
     userMediaSettings.value = { ...userMediaSettings.value, ...metaSettings };
   } else if (import.meta.client) {
@@ -261,49 +176,13 @@ const activeMediaTabs = computed(() => {
     { key: 'boardgame', label: 'Jeux', emoji: '🎲' },
     { key: 'videogame', label: 'Gaming', emoji: '🎮' }
   ];
-
   return allTabs.filter(tab => userMediaSettings.value[tab.key]);
 });
 
 const searchType = ref('vinyl');
-
-const searchTypeLabel = computed(() => {
-  const current = activeMediaTabs.value.find(t => t.key === searchType.value);
-  return current ? current.label : 'Média';
-});
-
-watch(activeMediaTabs, (newTabs) => {
-  if (newTabs.length > 0 && !newTabs.some(t => t.key === searchType.value)) {
-    searchType.value = newTabs[0].key;
-  }
-}, { immediate: true });
-
 const query = ref('');
 const loading = ref(false);
 const results = ref([]);
-
-// Scanner State
-const isScanning = ref(false);
-const fileInputRef = ref(null);
-const nativeVideoRef = ref(null);
-
-let mediaStream = null;
-let nativeDetector = null;
-let animationFrameId = null;
-let html5QrCodeScanner = null;
-let isUsingNative = false;
-
-const scannedBatch = ref([]);
-const scannedCodesSet = ref(new Set());
-const defaultBatchTarget = ref(false); // false = Collection, true = Wishlist
-const isResolvingApi = ref(false);
-const lastScanTimestamp = ref(0);
-
-// Zoom vidéo
-const scannerZoomValue = ref(2.0); // Forcé à 2x
-const scannerZoomMin = ref(1.0);
-const scannerZoomMax = ref(4.0);
-let videoTrack = null;
 
 const placeholderText = computed(() => {
   if (searchType.value === 'vinyl') return 'Album, artiste, EAN...';
@@ -315,28 +194,14 @@ const placeholderText = computed(() => {
 });
 
 function mapDiscogsFormat(formatsArray) {
-  if (!formatsArray || !Array.isArray(formatsArray) || formatsArray.length === 0) {
-    return 'vinyl_lp';
-  }
-
+  if (!formatsArray || !Array.isArray(formatsArray) || formatsArray.length === 0) return 'vinyl_lp';
   const rawString = formatsArray.map(f => typeof f === 'string' ? f : (f.name || '') + ' ' + (f.descriptions || []).join(' ')).join(' ').toLowerCase();
 
-  if (rawString.includes('7"') || rawString.includes('7 inch') || rawString.includes('single')) {
-    return 'vinyl_single';
-  }
-  if (rawString.includes('10"')) {
-    return 'vinyl_10';
-  }
-  if (rawString.includes('cd') || rawString.includes('compact disc')) {
-    return 'cd';
-  }
-  if (rawString.includes('cassette') || rawString.includes('tape')) {
-    return 'cassette';
-  }
-  if (rawString.includes('file') || rawString.includes('digital') || rawString.includes('mp3') || rawString.includes('flac')) {
-    return 'digital_music';
-  }
-
+  if (rawString.includes('7"') || rawString.includes('single')) return 'vinyl_single';
+  if (rawString.includes('10"')) return 'vinyl_10';
+  if (rawString.includes('cd')) return 'cd';
+  if (rawString.includes('cassette')) return 'cassette';
+  if (rawString.includes('digital')) return 'digital_music';
   return 'vinyl_lp';
 }
 
@@ -349,375 +214,46 @@ function getExistingItem(resItem) {
   const cleanArtist = (resItem.artist || '').trim().toLowerCase();
 
   return collectionStore.items.find(item => {
-    if (resItem.discogs_id && item.discogs_id === resItem.discogs_id) {
-      return true;
-    }
+    if (resItem.discogs_id && item.discogs_id === resItem.discogs_id) return true;
     return (item.title || '').trim().toLowerCase() === cleanTitle &&
            (item.artist || '').trim().toLowerCase() === cleanArtist &&
            item.type === resItem.type;
   }) || null;
 }
 
-// 📷 DÉMARRAGE DU SCANNER
-async function handleScanClick() {
-  if (!import.meta.client) return;
-
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    startLiveScanner();
-  } else {
-    fileInputRef.value?.click();
-  }
-}
-
-async function startLiveScanner() {
-  if (!import.meta.client) return;
-
-  scannedBatch.value = [];
-  scannedCodesSet.value.clear();
-  isScanning.value = true;
-  scannerZoomValue.value = 2.0;
-  await nextTick();
-
-  // 1. Tente BarcodeDetector Natif
-  if ('BarcodeDetector' in window) {
+// 📦 TRAITEMENT DES SCANS ENVOYÉS PAR LE MODAL
+async function handleBatchAddFromModal(scannedItems) {
+  for (const item of scannedItems) {
+    const isWishlist = item.target === 'wishlist';
+    
+    // Si ce n'est qu'un ISBN/code brut, on enrichit via l'API Open Library
     try {
-      const supportedFormats = await window.BarcodeDetector.getSupportedFormats();
-      if (supportedFormats.includes('ean_13') || supportedFormats.includes('code_128')) {
-        const started = await startNativeScanner();
-        if (started) return;
+      const res = await fetch(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(item.isbn)}&limit=1`);
+      const data = await res.json();
+      const doc = data.docs?.[0];
+
+      if (doc) {
+        await addItem({
+          title: doc.title,
+          artist: doc.author_name ? doc.author_name.join(', ') : 'Auteur inconnu',
+          year: doc.first_publish_year || null,
+          cover: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : null,
+          type: 'book',
+          detectedFormat: 'paperback'
+        }, isWishlist);
+      } else {
+        await addItem({
+          title: `Livre (${item.isbn})`,
+          artist: 'Auteur inconnu',
+          year: null,
+          cover: null,
+          type: 'book',
+          detectedFormat: 'paperback'
+        }, isWishlist);
       }
     } catch (e) {
-      console.warn("BarcodeDetector natif indisponible, bascule sur html5-qrcode...", e);
+      console.warn("Erreur d'enrichissement ISBN :", item.isbn, e);
     }
-  }
-
-  // 2. Fallback sur html5-qrcode
-  startLibraryScanner();
-}
-
-// 🟢 SCANNER NATIF (BarcodeDetector API)
-async function startNativeScanner() {
-  try {
-    nativeDetector = new window.BarcodeDetector({
-      formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128']
-    });
-
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { min: 1280, ideal: 1920 },
-        height: { min: 720, ideal: 1080 }
-      }
-    });
-
-    if (nativeVideoRef.value) {
-      nativeVideoRef.value.srcObject = mediaStream;
-      await nativeVideoRef.value.play();
-      videoTrack = mediaStream.getVideoTracks()[0];
-      isUsingNative = true;
-
-      applyHardwareZoom();
-      processNativeFrame();
-      return true;
-    }
-  } catch (err) {
-    console.warn("Erreur flux natif :", err);
-  }
-  return false;
-}
-
-function processNativeFrame() {
-  if (!isUsingNative || !nativeVideoRef.value || nativeVideoRef.value.readyState !== 4) {
-    animationFrameId = requestAnimationFrame(processNativeFrame);
-    return;
-  }
-
-  nativeDetector.detect(nativeVideoRef.value)
-    .then((barcodes) => {
-      if (barcodes.length > 0) {
-        for (const barcode of barcodes) {
-          if (barcode.rawValue) {
-            handleContinuousBarcodeDetect(barcode.rawValue);
-          }
-        }
-      }
-    })
-    .catch(() => {})
-    .finally(() => {
-      if (isUsingNative) {
-        animationFrameId = requestAnimationFrame(processNativeFrame);
-      }
-    });
-}
-
-// 🟠 FALLBACK BIBLIOTHÈQUE (html5-qrcode)
-async function startLibraryScanner() {
-  isUsingNative = false;
-  try {
-    const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-
-    const formatsSupported = [
-      Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODE_128
-    ];
-
-    html5QrCodeScanner = new Html5Qrcode("interactive-scanner", { 
-      formatsToSupport: formatsSupported,
-      verbose: false
-    });
-
-    const videoConstraints = {
-      facingMode: "environment",
-      width: { min: 1280, ideal: 1920 },
-      height: { min: 720, ideal: 1080 }
-    };
-
-    const config = {
-      fps: 15,
-      qrbox: (viewfinderWidth, viewfinderHeight) => ({
-        width: Math.floor(viewfinderWidth * 0.9),
-        height: Math.floor(viewfinderHeight * 0.4)
-      }),
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true
-      }
-    };
-
-    await html5QrCodeScanner.start(
-      videoConstraints,
-      config,
-      (decodedText) => handleContinuousBarcodeDetect(decodedText),
-      () => {}
-    );
-
-    initLibraryZoom();
-  } catch (err) {
-    stopScanner();
-    fileInputRef.value?.click();
-  }
-}
-
-function initLibraryZoom() {
-  let attempts = 0;
-  const interval = setInterval(() => {
-    const vElem = document.querySelector("#interactive-scanner video");
-    attempts++;
-
-    if (vElem && vElem.srcObject) {
-      clearInterval(interval);
-      const stream = vElem.srcObject;
-      videoTrack = stream.getVideoTracks()[0];
-      applyHardwareZoom();
-      applyCssZoomToElement(vElem);
-    }
-
-    if (attempts > 20) clearInterval(interval);
-  }, 150);
-}
-
-// 🔍 ZOOM UNIFIÉ
-function applyHardwareZoom() {
-  const factor = parseFloat(scannerZoomValue.value);
-  if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
-    videoTrack.applyConstraints({
-      advanced: [{ zoom: factor }]
-    }).catch(() => {});
-  }
-}
-
-function applyCssZoomToElement(elem) {
-  if (elem) {
-    elem.style.transform = `scale(${scannerZoomValue.value})`;
-    elem.style.transformOrigin = `center center`;
-  }
-}
-
-function zoomScannerIn() {
-  if (scannerZoomValue.value < scannerZoomMax.value) {
-    scannerZoomValue.value = Math.min(parseFloat((scannerZoomValue.value + 0.3).toFixed(1)), scannerZoomMax.value);
-    updateZoom();
-  }
-}
-
-function zoomScannerOut() {
-  if (scannerZoomValue.value > scannerZoomMin.value) {
-    scannerZoomValue.value = Math.max(parseFloat((scannerZoomValue.value - 0.3).toFixed(1)), scannerZoomMin.value);
-    updateZoom();
-  }
-}
-
-function updateZoom() {
-  applyHardwareZoom();
-  if (!isUsingNative) {
-    const vElem = document.querySelector("#interactive-scanner video");
-    applyCssZoomToElement(vElem);
-  }
-}
-
-// 🎯 DÉTECTION EN CONTINU & RÉSOLUTIONS API MULTI-MÉDIAS
-async function handleContinuousBarcodeDetect(barcode) {
-  const now = Date.now();
-
-  // Cooldown 1.5s anti-rebond
-  if (scannedCodesSet.value.has(barcode) && (now - lastScanTimestamp.value < 1500)) {
-    return;
-  }
-
-  if (!scannedCodesSet.value.has(barcode)) {
-    scannedCodesSet.value.add(barcode);
-    lastScanTimestamp.value = now;
-
-    if (navigator.vibrate) navigator.vibrate(80);
-
-    isResolvingApi.value = true;
-    try {
-      const itemData = await fetchSingleItemByBarcode(barcode, searchType.value);
-      if (itemData) {
-        scannedBatch.value.push({
-          ...itemData,
-          is_wishlist: defaultBatchTarget.value
-        });
-      }
-    } catch (e) {
-      console.warn("Échec résolution API pour le code-barres :", barcode, e);
-    } finally {
-      isResolvingApi.value = false;
-    }
-  }
-}
-
-// 🌐 RECHERCHE D'ÉLÉMENT PAR CODE-BARRES VIA LES APIS CONCERNÉES
-async function fetchSingleItemByBarcode(code, type) {
-  const discogsToken = config.public?.discogsToken || '';
-
-  if (type === 'vinyl') {
-    const res = await fetch(`https://api.discogs.com/database/search?barcode=${encodeURIComponent(code)}&token=${discogsToken}`);
-    const data = await res.json();
-    const item = data.results?.[0];
-    if (item) {
-      return {
-        id: item.id,
-        discogs_id: item.id,
-        title: item.title.includes(' - ') ? item.title.split(' - ')[1] : item.title,
-        artist: item.title.includes(' - ') ? item.title.split(' - ')[0] : 'Artiste inconnu',
-        year: item.year || '',
-        cover: item.cover_image || item.thumb,
-        type: 'vinyl',
-        detectedFormat: mapDiscogsFormat(item.format)
-      };
-    }
-  } else if (type === 'book') {
-    // Open Library : recherche par ISBN
-    const res = await fetch(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(code)}&limit=1`);
-    const data = await res.json();
-    const doc = data.docs?.[0];
-    if (doc) {
-      return {
-        id: doc.key,
-        title: doc.title,
-        artist: doc.author_name ? doc.author_name.join(', ') : 'Auteur inconnu',
-        year: doc.first_publish_year || '',
-        cover: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : null,
-        type: 'book',
-        detectedFormat: 'paperback'
-      };
-    }
-  } else if (type === 'movie') {
-    const tmdbToken = config.public?.tmdbToken;
-    const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${tmdbToken}&query=${encodeURIComponent(code)}&language=fr-FR`);
-    const data = await res.json();
-    const movie = data.results?.[0];
-    if (movie) {
-      return {
-        id: movie.id,
-        title: movie.title,
-        artist: movie.release_date ? movie.release_date.split('-')[0] : 'Film',
-        year: movie.release_date ? movie.release_date.split('-')[0] : '',
-        cover: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : null,
-        type: 'movie',
-        detectedFormat: 'bluray'
-      };
-    }
-  } else if (type === 'videogame') {
-    const rawgToken = config.public?.rawgToken || '';
-    const res = await fetch(`https://api.rawg.io/api/games?key=${rawgToken}&search=${encodeURIComponent(code)}&page_size=1`);
-    const data = await res.json();
-    const game = data.results?.[0];
-    if (game) {
-      const platformNames = (game.platforms || []).map(p => p.platform.name).join(', ');
-      return {
-        id: game.id,
-        title: game.name,
-        artist: platformNames || 'Jeu vidéo',
-        year: game.released ? game.released.split('-')[0] : '',
-        cover: game.background_image || null,
-        type: 'videogame',
-        detectedFormat: game.platforms?.some(p => p.platform.name.toLowerCase().includes('switch')) ? 'cartridge' : 'disc'
-      };
-    }
-  }
-
-  // Fallback direct avec le code-barres brut si l'API ne retourne rien
-  return {
-    id: 'scanned-' + code,
-    title: `Code: ${code}`,
-    artist: 'Produit scanné',
-    year: '',
-    cover: null,
-    type: type,
-    detectedFormat: 'standard'
-  };
-}
-
-function removeFromBatch(index) {
-  const item = scannedBatch.value[index];
-  if (item) {
-    scannedCodesSet.value.delete(item.id);
-    scannedBatch.value.splice(index, 1);
-  }
-}
-
-function clearBatch() {
-  scannedBatch.value = [];
-  scannedCodesSet.value.clear();
-}
-
-async function saveAllBatch() {
-  for (const item of scannedBatch.value) {
-    await addItem(item, item.is_wishlist);
-  }
-  clearBatch();
-  stopScanner();
-}
-
-function stopScanner() {
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
-  }
-
-  if (mediaStream) {
-    mediaStream.getTracks().forEach(t => t.stop());
-    mediaStream = null;
-  }
-
-  const vElem = isUsingNative ? nativeVideoRef.value : document.querySelector("#interactive-scanner video");
-  if (vElem) {
-    vElem.style.transform = 'none';
-  }
-
-  videoTrack = null;
-  isUsingNative = false;
-
-  if (html5QrCodeScanner && isScanning.value) {
-    html5QrCodeScanner.stop().catch(() => {}).finally(() => {
-      isScanning.value = false;
-    });
-  } else {
-    isScanning.value = false;
   }
 }
 
@@ -729,7 +265,7 @@ async function handleFileUpload(event) {
   loading.value = true;
   try {
     const { Html5Qrcode } = await import('html5-qrcode');
-    const html5QrCode = new Html5Qrcode("interactive-scanner");
+    const html5QrCode = new Html5Qrcode("reader-vue");
     const decodedText = await html5QrCode.scanFile(file, true);
     query.value = decodedText;
     searchApi();
@@ -793,40 +329,19 @@ async function searchApi() {
         detectedFormat: 'bluray'
       }));
 
-    } else if (searchType.value === 'boardgame') {
-      const res = await fetch(`https://api.boardgameatlas.com/api/search?name=${encodeURIComponent(query.value)}&limit=10&client_id=`);
-      if (res.ok) {
-        const data = await res.json();
-        results.value = (data || []).slice(0, 12).map(game => ({
-          id: game.gameId,
-          title: game.name,
-          artist: 'Jeu de société',
-          year: game.yearPublished || '',
-          cover: game.thumbnail || null,
-          type: 'boardgame',
-          detectedFormat: 'base_game'
-        }));
-      }
-
     } else if (searchType.value === 'videogame') {
       const rawgToken = config.public?.rawgToken || '';
-      const res = await fetch(
-        `https://api.rawg.io/api/games?key=${rawgToken}&search=${encodeURIComponent(query.value)}&page_size=12`
-      );
+      const res = await fetch(`https://api.rawg.io/api/games?key=${rawgToken}&search=${encodeURIComponent(query.value)}&page_size=12`);
       const data = await res.json();
-
-      results.value = (data.results || []).map(game => {
-        const platformNames = (game.platforms || []).map(p => p.platform.name).join(', ');
-        return {
-          id: game.id,
-          title: game.name,
-          artist: platformNames || 'Jeu vidéo',
-          year: game.released ? game.released.split('-')[0] : '',
-          cover: game.background_image || null,
-          type: 'videogame',
-          detectedFormat: game.platforms?.some(p => p.platform.name.toLowerCase().includes('switch')) ? 'cartridge' : 'disc'
-        };
-      });
+      results.value = (data.results || []).map(game => ({
+        id: game.id,
+        title: game.name,
+        artist: (game.platforms || []).map(p => p.platform.name).join(', ') || 'Jeu vidéo',
+        year: game.released ? game.released.split('-')[0] : '',
+        cover: game.background_image || null,
+        type: 'videogame',
+        detectedFormat: game.platforms?.some(p => p.platform.name.toLowerCase().includes('switch')) ? 'cartridge' : 'disc'
+      }));
     }
   } catch (err) {
     alert("Erreur lors de la recherche : " + err.message);
@@ -841,7 +356,7 @@ async function addItem(item, isWishlist) {
     artist: item.artist,
     year: item.year ? item.year.toString() : null,
     type: item.type,
-    format: item.detectedFormat,
+    format: item.detectedFormat || 'paperback',
     cover: item.cover,
     discogs_id: item.discogs_id || null,
     is_wishlist: isWishlist
@@ -869,66 +384,6 @@ async function moveToCollection(existingItem) {
 
 .hidden-file-input { display: none; }
 .btn-submit { width: 100%; padding: 14px; background: #3b82f6; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
-
-/* MODALE SCANNER VIDÉO CONTINU */
-.scanner-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.92); display: flex; justify-content: center; align-items: center; z-index: 4000; padding: 16px; }
-.scanner-container { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 20px; width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-.scanner-header { display: flex; justify-content: space-between; align-items: center; width: 100%; color: #fff; font-weight: 700; }
-.header-title { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
-.badge-count { background: #3b82f6; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
-.btn-close-scanner { background: rgba(255, 255, 255, 0.1); border: none; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; cursor: pointer; }
-
-.video-wrapper { width: 100%; height: 260px; border-radius: 12px; overflow: hidden; background: #000; position: relative; }
-.native-video-elem { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.15s ease-out; }
-.scanner-video { width: 100%; height: 100%; }
-
-/* 🔴 Ligne Laser Animée */
-.laser-line {
-  position: absolute;
-  top: 50%;
-  left: 10%;
-  width: 80%;
-  height: 2px;
-  background: #ef4444;
-  box-shadow: 0 0 10px #ef4444, 0 0 18px #ef4444;
-  pointer-events: none;
-  animation: scan-anim 2s infinite ease-in-out;
-  z-index: 10;
-}
-
-@keyframes scan-anim {
-  0% { transform: translateY(-35px); opacity: 0.5; }
-  50% { transform: translateY(35px); opacity: 1; }
-  100% { transform: translateY(-35px); opacity: 0.5; }
-}
-
-.api-resolving-indicator { font-size: 0.75rem; color: #60a5fa; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; }
-.spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #60a5fa; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.target-selection { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #27272a; border-radius: 8px; color: #a1a1aa; font-size: 0.8rem; }
-.target-select, .batch-item-target { background: #18181b; border: 1px solid #3f3f46; color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; }
-
-/* Tiroir des éléments scannés */
-.scanned-batch-tray { background: #27272a; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.tray-header { display: flex; justify-content: space-between; align-items: center; }
-.tray-header h4 { margin: 0; font-size: 0.85rem; color: #fff; }
-.btn-clear-tray { background: none; border: none; color: #ef4444; font-size: 0.75rem; cursor: pointer; }
-.batch-list { list-style: none; padding: 0; margin: 0; max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-.batch-item { display: flex; align-items: center; gap: 10px; background: #18181b; padding: 6px 8px; border-radius: 8px; }
-.batch-cover { width: 32px; height: 42px; object-fit: cover; border-radius: 4px; }
-.batch-details { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; }
-.batch-item-title { font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.batch-item-artist { font-size: 0.7rem; color: #a1a1aa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.btn-remove-batch { background: none; border: none; color: #71717a; cursor: pointer; padding: 2px 6px; }
-.btn-confirm-batch { background: #3b82f6; color: #fff; border: none; padding: 10px; border-radius: 8px; font-weight: 700; font-size: 0.85rem; cursor: pointer; margin-top: 4px; }
-
-:deep(#interactive-scanner video) { transition: transform 0.15s ease-out !important; object-fit: cover !important; width: 100% !important; height: 100% !important; }
-.scanner-zoom-controls { display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; }
-.btn-zoom { background: #27272a; border: 1px solid #3f3f46; color: #fff; padding: 6px 14px; border-radius: 8px; font-weight: 700; font-size: 0.85rem; cursor: pointer; }
-.btn-zoom:disabled { opacity: 0.4; cursor: not-allowed; }
-.zoom-label { color: #a1a1aa; font-size: 0.85rem; font-weight: 600; min-width: 45px; text-align: center; }
-.scanner-hint { font-size: 0.75rem; color: #71717a; text-align: center; margin: 0; }
 
 /* RÉSULTATS */
 .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-top: 12px; }
