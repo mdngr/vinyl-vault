@@ -1,6 +1,6 @@
 <template>
   <div class="search-panel">
-    <!-- Onglets par média (FILTRÉS SELON LES PRÉFÉRENCES DU COMPTE) -->
+    <!-- Onglets par média -->
     <div class="media-type-tabs">
       <button 
         v-for="type in activeMediaTabs"
@@ -24,11 +24,11 @@
           class="search-input"
         />
         
-        <!-- Bouton Scanner -->
+        <!-- Bouton Scanner : ouvre la modale dédiée -->
         <button 
           type="button" 
           class="btn-scan-inside" 
-          @click="handleScanClick" 
+          @click="isScannerModalOpen = true" 
           title="Scanner un code-barres"
         >
           📷
@@ -50,46 +50,14 @@
       </button>
     </form>
 
-    <!-- 📷 MODALE SCANNER VIDÉO EN DIRECT -->
-    <div v-if="isScanning" class="scanner-modal">
-      <div class="scanner-container">
-        <div class="scanner-header">
-          <span>Scanner un code-barres</span>
-          <button class="btn-close-scanner" @click="stopScanner">✕ Fermer</button>
-        </div>
+    <!-- 📷 COMPOSANT MODALE SCANNER -->
+    <ScannerModal 
+      :is-open="isScannerModalOpen" 
+      @close="isScannerModalOpen = false" 
+      @batch-add="handleBatchAddFromModal" 
+    />
 
-        <div class="video-wrapper">
-          <div id="interactive-scanner" class="scanner-video"></div>
-        </div>
-
-        <!-- Contrôles du zoom vidéo -->
-        <div class="scanner-zoom-controls">
-          <button 
-            type="button" 
-            class="btn-zoom" 
-            @click="zoomScannerOut" 
-            :disabled="scannerZoomValue <= scannerZoomMin"
-          >
-            🔍 -
-          </button>
-
-          <span class="zoom-label">{{ parseFloat(scannerZoomValue).toFixed(1) }}x</span>
-
-          <button 
-            type="button" 
-            class="btn-zoom" 
-            @click="zoomScannerIn" 
-            :disabled="scannerZoomValue >= scannerZoomMax"
-          >
-            🔍 +
-          </button>
-        </div>
-
-        <p class="scanner-hint">Pointez la caméra vers le code EAN / ISBN</p>
-      </div>
-    </div>
-
-    <!-- RÉSULTATS DE RECHERCHE -->
+    <!-- RÉSULTATS DE RECHERCHE MANUELLE -->
     <div v-if="results.length > 0" class="results-grid">
       <div 
         v-for="res in results" 
@@ -143,18 +111,20 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useCollectionStore } from '~/stores/collection';
 import { useAuthStore } from '~/stores/auth';
 import { getFormatLabel } from '~/constants/formats';
+import ScannerModal from '~/components/ScannerModal.vue';
 
 const collectionStore = useCollectionStore();
 const authStore = useAuthStore();
 const config = useRuntimeConfig();
 
 const defaultCover = 'https://via.placeholder.com/200x300/2a2a2a/ffffff?text=Pas+d%27image';
+const isScannerModalOpen = ref(false);
+const fileInputRef = ref(null);
 
-// Réglages par défaut des types activés
 const userMediaSettings = ref({
   vinyl: true,
   book: true,
@@ -165,7 +135,6 @@ const userMediaSettings = ref({
 
 function loadMediaSettings() {
   const metaSettings = authStore.user?.user_metadata?.media_settings;
-
   if (metaSettings) {
     userMediaSettings.value = { ...userMediaSettings.value, ...metaSettings };
   } else if (import.meta.client) {
@@ -199,7 +168,6 @@ watch(() => authStore.user, () => {
   loadMediaSettings();
 }, { immediate: true });
 
-// Filtre uniquement les onglets activés dans le compte
 const activeMediaTabs = computed(() => {
   const allTabs = [
     { key: 'vinyl', label: 'Musique', emoji: '🎵' },
@@ -208,35 +176,13 @@ const activeMediaTabs = computed(() => {
     { key: 'boardgame', label: 'Jeux', emoji: '🎲' },
     { key: 'videogame', label: 'Gaming', emoji: '🎮' }
   ];
-
   return allTabs.filter(tab => userMediaSettings.value[tab.key]);
 });
 
 const searchType = ref('vinyl');
-
-// S'assure que l'onglet actif existe toujours dans les onglets autorisés
-watch(activeMediaTabs, (newTabs) => {
-  if (newTabs.length > 0 && !newTabs.some(t => t.key === searchType.value)) {
-    searchType.value = newTabs[0].key;
-  }
-}, { immediate: true });
-
 const query = ref('');
 const loading = ref(false);
 const results = ref([]);
-
-// Scanner refs
-const isScanning = ref(false);
-const fileInputRef = ref(null);
-let html5QrCodeScanner = null;
-
-// Zoom scanner vidéo
-const scannerZoomValue = ref(1);
-const scannerZoomMin = ref(1);
-const scannerZoomMax = ref(3);
-let scannerVideoElement = null;
-let scannerVideoTrack = null;
-let isHardwareZoom = false;
 
 const placeholderText = computed(() => {
   if (searchType.value === 'vinyl') return 'Album, artiste, EAN...';
@@ -247,30 +193,15 @@ const placeholderText = computed(() => {
   return 'Rechercher...';
 });
 
-// Normalisation des formats renvoyés par l'API Discogs
 function mapDiscogsFormat(formatsArray) {
-  if (!formatsArray || !Array.isArray(formatsArray) || formatsArray.length === 0) {
-    return 'vinyl_lp';
-  }
-
+  if (!formatsArray || !Array.isArray(formatsArray) || formatsArray.length === 0) return 'vinyl_lp';
   const rawString = formatsArray.map(f => typeof f === 'string' ? f : (f.name || '') + ' ' + (f.descriptions || []).join(' ')).join(' ').toLowerCase();
 
-  if (rawString.includes('7"') || rawString.includes('7 inch') || rawString.includes('single')) {
-    return 'vinyl_single';
-  }
-  if (rawString.includes('10"')) {
-    return 'vinyl_10';
-  }
-  if (rawString.includes('cd') || rawString.includes('compact disc')) {
-    return 'cd';
-  }
-  if (rawString.includes('cassette') || rawString.includes('tape')) {
-    return 'cassette';
-  }
-  if (rawString.includes('file') || rawString.includes('digital') || rawString.includes('mp3') || rawString.includes('flac')) {
-    return 'digital_music';
-  }
-
+  if (rawString.includes('7"') || rawString.includes('single')) return 'vinyl_single';
+  if (rawString.includes('10"')) return 'vinyl_10';
+  if (rawString.includes('cd')) return 'cd';
+  if (rawString.includes('cassette')) return 'cassette';
+  if (rawString.includes('digital')) return 'digital_music';
   return 'vinyl_lp';
 }
 
@@ -283,127 +214,100 @@ function getExistingItem(resItem) {
   const cleanArtist = (resItem.artist || '').trim().toLowerCase();
 
   return collectionStore.items.find(item => {
-    if (resItem.discogs_id && item.discogs_id === resItem.discogs_id) {
-      return true;
-    }
+    if (resItem.discogs_id && item.discogs_id === resItem.discogs_id) return true;
     return (item.title || '').trim().toLowerCase() === cleanTitle &&
            (item.artist || '').trim().toLowerCase() === cleanArtist &&
            item.type === resItem.type;
   }) || null;
 }
 
-// 📷 CLIC BOUTON SCANNER
-async function handleScanClick() {
-  if (!import.meta.client) return;
+// 📦 TRAITEMENT AVEC MULTI-FALLBACK (Open Library + Google Books API)
+async function handleBatchAddFromModal(scannedItems) {
+  for (const item of scannedItems) {
+    const isWishlist = item.target === 'wishlist';
+    const cleanIsbn = item.isbn.trim().replace(/[- ]/g, '');
+    let bookInfo = null;
 
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    startLiveScanner();
-  } else {
-    fileInputRef.value?.click();
-  }
-}
+    try {
+      // 1. Essai Open Library Search API
+      const olRes = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(cleanIsbn)}&limit=1`);
+      const olData = await olRes.json();
+      const olDoc = olData.docs?.[0];
 
-// 🔴 SCANNER VIDÉO EN DIRECT
-async function startLiveScanner() {
-  if (!import.meta.client) return;
-
-  isScanning.value = true;
-  scannerZoomValue.value = 1;
-  await nextTick();
-
-  try {
-    const { Html5Qrcode } = await import('html5-qrcode');
-    html5QrCodeScanner = new Html5Qrcode("interactive-scanner");
-    await html5QrCodeScanner.start(
-      { facingMode: "environment" },
-      { fps: 15, qrbox: { width: 250, height: 140 } },
-      (decodedText) => {
-        query.value = decodedText;
-        stopScanner();
-        searchApi();
-      },
-      () => {}
-    );
-
-    setupScannerZoom();
-  } catch (err) {
-    stopScanner();
-    fileInputRef.value?.click();
-  }
-}
-
-function setupScannerZoom() {
-  if (!import.meta.client) return;
-  let attempts = 0;
-  const interval = setInterval(() => {
-    scannerVideoElement = document.querySelector("#interactive-scanner video");
-    attempts++;
-
-    if (scannerVideoElement && scannerVideoElement.srcObject) {
-      clearInterval(interval);
-      const stream = scannerVideoElement.srcObject;
-      scannerVideoTrack = stream.getVideoTracks()[0];
-
-      const capabilities = scannerVideoTrack?.getCapabilities ? scannerVideoTrack.getCapabilities() : {};
-
-      if (capabilities.zoom) {
-        isHardwareZoom = true;
-        scannerZoomMin.value = capabilities.zoom.min || 1;
-        scannerZoomMax.value = Math.min(capabilities.zoom.max || 4, 4);
-        scannerZoomValue.value = capabilities.zoom.min || 1;
-      } else {
-        isHardwareZoom = false;
-        scannerZoomMin.value = 1;
-        scannerZoomMax.value = 3;
-        scannerZoomValue.value = 1;
+      if (olDoc) {
+        bookInfo = {
+          title: olDoc.title,
+          artist: olDoc.author_name ? olDoc.author_name.join(', ') : 'Auteur inconnu',
+          year: olDoc.first_publish_year || null,
+          cover: olDoc.cover_i ? `https://covers.openlibrary.org/b/id/${olDoc.cover_i}-M.jpg` : null,
+          type: 'book',
+          detectedFormat: 'paperback'
+        };
       }
+
+      // 2. Fallback Open Library Direct API par ISBN
+      if (!bookInfo) {
+        const directRes = await fetch(`https://openlibrary.org/isbn/${cleanIsbn}.json`);
+        if (directRes.ok) {
+          const directData = await directRes.json();
+          bookInfo = {
+            title: directData.title,
+            artist: 'Auteur inconnu',
+            year: directData.publish_date || null,
+            cover: directData.covers?.[0] ? `https://covers.openlibrary.org/b/id/${directData.covers[0]}-M.jpg` : null,
+            type: 'book',
+            detectedFormat: 'paperback'
+          };
+        }
+      }
+
+      // 3. Fallback Google Books API (très efficace sur les livres FR récents)
+      if (!bookInfo) {
+        const gbRes = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
+        const gbData = await gbRes.json();
+        const gbVolume = gbData.items?.[0]?.volumeInfo;
+
+        if (gbVolume) {
+          const rawCover = gbVolume.imageLinks?.thumbnail || gbVolume.imageLinks?.smallThumbnail;
+          bookInfo = {
+            title: gbVolume.title,
+            artist: gbVolume.authors ? gbVolume.authors.join(', ') : 'Auteur inconnu',
+            year: gbVolume.publishedDate ? gbVolume.publishedDate.split('-')[0] : null,
+            cover: rawCover ? rawCover.replace('http://', 'https://') : null,
+            type: 'book',
+            detectedFormat: 'paperback'
+          };
+        }
+      }
+
+      // 4. Fallback ultime avec l'ISBN brut si aucune API ne répond
+      if (!bookInfo) {
+        bookInfo = {
+          title: `Livre (${cleanIsbn})`,
+          artist: 'Auteur inconnu',
+          year: null,
+          cover: null,
+          type: 'book',
+          detectedFormat: 'paperback'
+        };
+      }
+
+      await addItem(bookInfo, isWishlist);
+
+    } catch (e) {
+      console.warn("Erreur d'enrichissement pour l'ISBN :", cleanIsbn, e);
+      await addItem({
+        title: `Livre (${cleanIsbn})`,
+        artist: 'Auteur inconnu',
+        year: null,
+        cover: null,
+        type: 'book',
+        detectedFormat: 'paperback'
+      }, isWishlist);
     }
-
-    if (attempts > 20) clearInterval(interval);
-  }, 200);
-}
-
-function zoomScannerIn() {
-  if (scannerZoomValue.value < scannerZoomMax.value) {
-    scannerZoomValue.value = Math.min(parseFloat((scannerZoomValue.value + 0.3).toFixed(1)), scannerZoomMax.value);
-    applyScannerZoom();
   }
 }
 
-function zoomScannerOut() {
-  if (scannerZoomValue.value > scannerZoomMin.value) {
-    scannerZoomValue.value = Math.max(parseFloat((scannerZoomValue.value - 0.3).toFixed(1)), scannerZoomMin.value);
-    applyScannerZoom();
-  }
-}
-
-function applyScannerZoom() {
-  const factor = parseFloat(scannerZoomValue.value);
-  if (isHardwareZoom && scannerVideoTrack) {
-    scannerVideoTrack.applyConstraints({ advanced: [{ zoom: factor }] }).catch(() => {});
-  } else if (scannerVideoElement) {
-    scannerVideoElement.style.transform = `scale(${factor})`;
-    scannerVideoElement.style.transformOrigin = `center center`;
-  }
-}
-
-function stopScanner() {
-  if (scannerVideoElement) {
-    scannerVideoElement.style.transform = 'none';
-  }
-  scannerVideoElement = null;
-  scannerVideoTrack = null;
-
-  if (html5QrCodeScanner && isScanning.value) {
-    html5QrCodeScanner.stop().catch(() => {}).finally(() => {
-      isScanning.value = false;
-    });
-  } else {
-    isScanning.value = false;
-  }
-}
-
-// 📸 FALLBACK PHOTO
 async function handleFileUpload(event) {
   if (!import.meta.client) return;
   const file = event.target.files[0];
@@ -412,23 +316,19 @@ async function handleFileUpload(event) {
   loading.value = true;
   try {
     const { Html5Qrcode } = await import('html5-qrcode');
-    const html5QrCode = new Html5Qrcode("interactive-scanner");
+    const html5QrCode = new Html5Qrcode("reader-vue");
     const decodedText = await html5QrCode.scanFile(file, true);
     query.value = decodedText;
     searchApi();
   } catch (err) {
-    alert("Aucun code-barres n'a pu être détecté sur cette photo. Essayez d'améliorer la luminosité ou saisissez votre recherche manuellement.");
+    alert("Aucun code-barres n'a pu être détecté sur cette photo.");
   } finally {
     loading.value = false;
     event.target.value = '';
   }
 }
 
-onUnmounted(() => {
-  stopScanner();
-});
-
-// 🔍 RECHERCHE MULTI-API (Discogs / OpenLibrary / TMDB / BoardGameGeek / RAWG)
+// RECHERCHE MANUELLE MULTI-API
 async function searchApi() {
   if (!query.value.trim()) return;
   loading.value = true;
@@ -467,7 +367,7 @@ async function searchApi() {
       }));
 
     } else if (searchType.value === 'movie') {
-      const tmdbToken = config.public?.tmdbToken
+      const tmdbToken = config.public?.tmdbToken;
       const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${tmdbToken}&query=${encodeURIComponent(query.value)}&language=fr-FR`);
       const data = await res.json();
       results.value = (data.results || []).slice(0, 12).map(movie => ({
@@ -480,49 +380,19 @@ async function searchApi() {
         detectedFormat: 'bluray'
       }));
 
-    } else if (searchType.value === 'boardgame') {
-      const res = await fetch(`https://api.boardgameatlas.com/api/search?name=${encodeURIComponent(query)}&limit=10&client_id=`);
-      if (res.ok) {
-        const data = await res.json();
-        results.value = (data || []).slice(0, 12).map(game => ({
-          id: game.gameId,
-          title: game.name,
-          artist: 'Jeu de société',
-          year: game.yearPublished || '',
-          cover: game.thumbnail || null,
-          type: 'boardgame',
-          detectedFormat: 'base_game'
-        }));
-      }
-
     } else if (searchType.value === 'videogame') {
       const rawgToken = config.public?.rawgToken || '';
-
-      if (!rawgToken) {
-        console.error("⚠️ RAWG Token non défini dans runtimeConfig.public.rawgToken !");
-      }
-
-      const res = await fetch(
-        `https://api.rawg.io/api/games?key=${rawgToken}&search=${encodeURIComponent(query.value)}&page_size=12`
-      );
+      const res = await fetch(`https://api.rawg.io/api/games?key=${rawgToken}&search=${encodeURIComponent(query.value)}&page_size=12`);
       const data = await res.json();
-
-      if (data.error) {
-        console.error("Erreur renvoyée par RAWG :", data.error);
-      }
-
-      results.value = (data.results || []).map(game => {
-        const platformNames = (game.platforms || []).map(p => p.platform.name).join(', ');
-        return {
-          id: game.id,
-          title: game.name,
-          artist: platformNames || 'Jeu vidéo',
-          year: game.released ? game.released.split('-')[0] : '',
-          cover: game.background_image || null,
-          type: 'videogame',
-          detectedFormat: game.platforms?.some(p => p.platform.name.toLowerCase().includes('switch')) ? 'cartridge' : 'disc'
-        };
-      });
+      results.value = (data.results || []).map(game => ({
+        id: game.id,
+        title: game.name,
+        artist: (game.platforms || []).map(p => p.platform.name).join(', ') || 'Jeu vidéo',
+        year: game.released ? game.released.split('-')[0] : '',
+        cover: game.background_image || null,
+        type: 'videogame',
+        detectedFormat: game.platforms?.some(p => p.platform.name.toLowerCase().includes('switch')) ? 'cartridge' : 'disc'
+      }));
     }
   } catch (err) {
     alert("Erreur lors de la recherche : " + err.message);
@@ -537,7 +407,7 @@ async function addItem(item, isWishlist) {
     artist: item.artist,
     year: item.year ? item.year.toString() : null,
     type: item.type,
-    format: item.detectedFormat,
+    format: item.detectedFormat || 'paperback',
     cover: item.cover,
     discogs_id: item.discogs_id || null,
     is_wishlist: isWishlist
@@ -565,51 +435,6 @@ async function moveToCollection(existingItem) {
 
 .hidden-file-input { display: none; }
 .btn-submit { width: 100%; padding: 14px; background: #3b82f6; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
-
-/* MODALE SCANNER VIDÉO */
-.scanner-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.95); display: flex; justify-content: center; align-items: center; z-index: 4000; padding: 16px; }
-.scanner-container { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 20px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
-.scanner-header { display: flex; justify-content: space-between; align-items: center; width: 100%; color: #fff; font-weight: 700; }
-.btn-close-scanner { background: rgba(255, 255, 255, 0.1); border: none; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; cursor: pointer; }
-.video-wrapper { width: 100%; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; background: #000; }
-.scanner-video { width: 100%; height: 100%; }
-.scanner-hint { font-size: 0.8rem; color: #a1a1aa; text-align: center; margin: 0; }
-
-:deep(#interactive-scanner video) {
-  transition: transform 0.1s ease-out;
-  object-fit: cover;
-}
-
-.scanner-zoom-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  width: 100%;
-}
-
-.btn-zoom {
-  background: #27272a;
-  border: 1px solid #3f3f46;
-  color: #fff;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-zoom:hover:not(:disabled) { background: #3f3f46; }
-.btn-zoom:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.zoom-label {
-  color: #a1a1aa;
-  font-size: 0.85rem;
-  font-weight: 600;
-  min-width: 45px;
-  text-align: center;
-}
 
 /* RÉSULTATS */
 .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-top: 12px; }

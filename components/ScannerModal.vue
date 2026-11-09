@@ -1,15 +1,40 @@
 <template>
   <div v-if="isOpen" class="scanner-modal-overlay" @click.self="close">
     <div class="scanner-modal-content">
+      <!-- En-tête -->
       <div class="scanner-header">
-        <h3>📷 Scanner un code-barres</h3>
+        <div class="title-group">
+          <h3>📷 Scanner d'étagère</h3>
+          <span v-if="scannedList.length > 0" class="badge-count">
+            {{ scannedList.length }} livre(s)
+          </span>
+        </div>
         <button class="btn-close" @click="close">✕</button>
       </div>
 
-      <div id="reader-vue" class="scanner-viewport"></div>
+      <!-- Zone Caméra avec Ligne Rouge de Scan -->
+      <div id="reader-vue" class="scanner-viewport">
+        <video 
+          v-if="isUsingNative"
+          ref="videoRef" 
+          autoplay 
+          playsinline 
+          muted 
+          class="native-video"
+          :style="{ transform: `scale(${zoomValue})`, transformOrigin: 'center center' }"
+        ></video>
+        
+        <!-- Message d'erreur si la caméra ne démarre pas -->
+        <div v-if="errorMessage" class="camera-error">
+          <p>⚠️ {{ errorMessage }}</p>
+          <button class="btn-retry" @click="initScanner">Réessayer</button>
+        </div>
 
-      <!-- Contrôle du Zoom par Boutons -->
-      <div v-if="hasZoomSupport" class="zoom-controls">
+        <div v-else class="laser-line"></div>
+      </div>
+
+      <!-- Contrôles du Zoom -->
+      <div class="zoom-controls">
         <button 
           type="button" 
           class="btn-zoom" 
@@ -18,9 +43,7 @@
         >
           🔍 -
         </button>
-
         <span class="zoom-label">{{ parseFloat(zoomValue).toFixed(1) }}x</span>
-
         <button 
           type="button" 
           class="btn-zoom" 
@@ -28,6 +51,40 @@
           :disabled="zoomValue >= zoomMax"
         >
           🔍 +
+        </button>
+      </div>
+
+      <!-- Choix de destination globale -->
+      <div class="target-selection">
+        <label>Destination par défaut :</label>
+        <select v-model="defaultTarget" class="target-select">
+          <option value="library">📚 Bibliothèque</option>
+          <option value="wishlist">⭐ Wishlist</option>
+        </select>
+      </div>
+
+      <!-- File d'attente des scans accumulés -->
+      <div v-if="scannedList.length > 0" class="scanned-queue">
+        <div class="queue-header">
+          <h4>En attente de validation</h4>
+          <button class="btn-clear" @click="clearQueue">Vider</button>
+        </div>
+
+        <ul class="queue-list">
+          <li v-for="(item, index) in scannedList" :key="item.isbn + '-' + index" class="queue-item">
+            <span class="barcode-text"><code>{{ item.isbn }}</code></span>
+            
+            <select v-model="item.target" class="item-target-select">
+              <option value="library">Bibliothèque</option>
+              <option value="wishlist">Wishlist</option>
+            </select>
+
+            <button class="btn-remove" @click="removeItem(index)">✕</button>
+          </li>
+        </ul>
+
+        <button class="btn-save" @click="confirmBatch">
+          Ajouter les {{ scannedList.length }} livre(s)
         </button>
       </div>
     </div>
@@ -41,146 +98,299 @@ const props = defineProps({
   isOpen: Boolean
 });
 
-const emit = defineEmits(['close', 'scan']);
+const emit = defineEmits(['close', 'batch-add']);
 
-let html5QrCode = null;
+const videoRef = ref(null);
+let mediaStream = null;
 let videoTrack = null;
-let videoElement = null;
+let nativeDetector = null;
+let animationFrameId = null;
+let html5QrCode = null;
+const isUsingNative = ref(false);
+const errorMessage = ref('');
 
-const hasZoomSupport = ref(false);
-const isHardwareZoom = ref(false);
-const zoomValue = ref(1);
-const zoomMin = ref(1);
-const zoomMax = ref(3);
+// Zoom forcé à 2x par défaut
+const zoomValue = ref(2.0);
+const zoomMin = ref(1.0);
+const zoomMax = ref(4.0);
+
+const scannedList = ref([]);
+const scannedIsbns = ref(new Set());
+const defaultTarget = ref('library');
+const lastScanTimestamp = ref(0);
 
 watch(() => props.isOpen, async (newVal) => {
   if (newVal) {
+    scannedList.value = [];
+    scannedIsbns.value.clear();
+    errorMessage.value = '';
+    
     await nextTick();
-    startScanner();
+    await new Promise(r => setTimeout(r, 50));
+    initScanner();
   } else {
     stopScanner();
   }
 });
 
-async function startScanner() {
+async function initScanner() {
   if (!import.meta.client) return;
+  errorMessage.value = '';
 
+  // 1. Tenter BarcodeDetector natif (ultra rapide grâce à l'accélération matérielle du GPU)
+  if ('BarcodeDetector' in window) {
+    try {
+      const supportedFormats = await window.BarcodeDetector.getSupportedFormats();
+      if (supportedFormats.includes('ean_13')) {
+        const started = await startNativeScanner();
+        if (started) return;
+      }
+    } catch (e) {
+      console.warn("BarcodeDetector natif indisponible, passage sur html5-qrcode...", e);
+    }
+  }
+
+  // 2. Fallback html5-qrcode
+  await startLibraryScanner();
+}
+
+async function startNativeScanner() {
+  try {
+    // Restreindre aux formats EAN-13 et EAN-8 accélère la détection native
+    nativeDetector = new window.BarcodeDetector({
+      formats: ['ean_13', 'ean_8']
+    });
+
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        focusMode: { ideal: "continuous" }
+      }
+    });
+
+    isUsingNative.value = true;
+    await nextTick();
+
+    if (videoRef.value) {
+      videoRef.value.srcObject = mediaStream;
+      await videoRef.value.play();
+      videoTrack = mediaStream.getVideoTracks()[0];
+
+      applyHardwareZoom();
+      processNativeFrame();
+      return true;
+    }
+  } catch (err) {
+    console.warn("Erreur flux vidéo natif :", err);
+    isUsingNative.value = false;
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(t => t.stop());
+      mediaStream = null;
+    }
+  }
+  return false;
+}
+
+function processNativeFrame() {
+  if (!isUsingNative.value || !videoRef.value || videoRef.value.readyState !== 4) {
+    animationFrameId = requestAnimationFrame(processNativeFrame);
+    return;
+  }
+
+  nativeDetector.detect(videoRef.value)
+    .then((barcodes) => {
+      if (barcodes.length > 0) {
+        for (const barcode of barcodes) {
+          if (barcode.rawValue) {
+            handleContinuousScan(barcode.rawValue);
+          }
+        }
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      if (isUsingNative.value) {
+        animationFrameId = requestAnimationFrame(processNativeFrame);
+      }
+    });
+}
+
+async function startLibraryScanner() {
+  isUsingNative.value = false;
   try {
     const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
 
+    const container = document.getElementById("reader-vue");
+    if (!container) {
+      errorMessage.value = "Conteneur caméra introuvable dans le DOM.";
+      return;
+    }
+
+    container.innerHTML = '<div class="laser-line"></div>';
+
+    // Se limiter aux EAN (Livres, Vinyles, Jeux)
     const formatsSupported = [
       Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODE_128
+      Html5QrcodeSupportedFormats.EAN_8
     ];
 
-    html5QrCode = new Html5Qrcode("reader-vue", { formatsToSupport: formatsSupported });
+    html5QrCode = new Html5Qrcode("reader-vue", { 
+      formatsToSupport: formatsSupported,
+      verbose: false
+    });
 
     const config = {
-      fps: 15,
-      qrbox: { width: 280, height: 140 }
+      fps: 30, // ⚡ Augmenté de 15 à 30 FPS pour une détection ultra rapide
+      qrbox: (viewfinderWidth, viewfinderHeight) => ({
+        width: Math.floor(viewfinderWidth * 0.95), // Zone de scan élargie
+        height: Math.floor(viewfinderHeight * 0.6)
+      })
     };
 
     await html5QrCode.start(
       { facingMode: "environment" },
       config,
-      (decodedText) => {
-        if (navigator.vibrate) navigator.vibrate(200);
-        emit('scan', decodedText);
-        close();
-      },
+      (decodedText) => handleContinuousScan(decodedText),
       () => {}
     );
 
-    setupZoom();
+    initLibraryZoom();
   } catch (err) {
-    console.error("Erreur scanner caméra :", err);
-    close();
+    console.error("Erreur scanner caméra fallback :", err);
+    if (err?.name === 'NotAllowedError' || err?.toString().includes('Permission')) {
+      errorMessage.value = "Accès à la caméra refusé. Vérifiez vos autorisations.";
+    } else {
+      errorMessage.value = "Impossible d'accéder à la caméra.";
+    }
   }
 }
 
-function setupZoom() {
-  if (!import.meta.client) return;
+function initLibraryZoom() {
   let attempts = 0;
-
-  const checkVideo = setInterval(() => {
-    videoElement = document.querySelector("#reader-vue video");
+  const interval = setInterval(() => {
+    const vElem = document.querySelector("#reader-vue video");
     attempts++;
 
-    if (videoElement && videoElement.srcObject) {
-      clearInterval(checkVideo);
-
-      const stream = videoElement.srcObject;
+    if (vElem && vElem.srcObject) {
+      clearInterval(interval);
+      const stream = vElem.srcObject;
       videoTrack = stream.getVideoTracks()[0];
-
-      const capabilities = videoTrack?.getCapabilities ? videoTrack.getCapabilities() : {};
-
-      if (capabilities.zoom) {
-        // Zoom Optique / Matériel (Android)
-        isHardwareZoom.value = true;
-        zoomMin.value = capabilities.zoom.min || 1;
-        zoomMax.value = Math.min(capabilities.zoom.max || 4, 4);
-        zoomValue.value = capabilities.zoom.min || 1;
-      } else {
-        // Zoom Numérique CSS (iOS / Safari / Web)
-        isHardwareZoom.value = false;
-        zoomMin.value = 1;
-        zoomMax.value = 3;
-        zoomValue.value = 1;
-      }
-
-      hasZoomSupport.value = true;
+      applyHardwareZoom();
+      applyCssZoomToElement(vElem);
     }
 
-    if (attempts > 20) {
-      clearInterval(checkVideo);
-    }
-  }, 200);
+    if (attempts > 20) clearInterval(interval);
+  }, 100);
+}
+
+function applyHardwareZoom() {
+  const factor = parseFloat(zoomValue.value);
+  if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
+    videoTrack.applyConstraints({
+      advanced: [{ zoom: factor }]
+    }).catch(() => {});
+  }
+}
+
+function applyCssZoomToElement(elem) {
+  if (elem) {
+    elem.style.transform = `scale(${zoomValue.value})`;
+    elem.style.transformOrigin = `center center`;
+  }
 }
 
 function zoomIn() {
   if (zoomValue.value < zoomMax.value) {
     zoomValue.value = Math.min(parseFloat((zoomValue.value + 0.3).toFixed(1)), zoomMax.value);
-    applyZoom();
+    updateZoom();
   }
 }
 
 function zoomOut() {
   if (zoomValue.value > zoomMin.value) {
     zoomValue.value = Math.max(parseFloat((zoomValue.value - 0.3).toFixed(1)), zoomMin.value);
-    applyZoom();
+    updateZoom();
   }
 }
 
-function applyZoom() {
-  const zoomFactor = parseFloat(zoomValue.value);
-
-  if (isHardwareZoom.value && videoTrack) {
-    videoTrack.applyConstraints({ advanced: [{ zoom: zoomFactor }] }).catch(() => {});
-  } else if (videoElement) {
-    videoElement.style.transform = `scale(${zoomFactor})`;
-    videoElement.style.transformOrigin = `center center`;
+function updateZoom() {
+  applyHardwareZoom();
+  if (!isUsingNative.value) {
+    const vElem = document.querySelector("#reader-vue video");
+    applyCssZoomToElement(vElem);
   }
+}
+
+function handleContinuousScan(barcode) {
+  const now = Date.now();
+
+  // ⚡ Cooldown réduit à 600ms pour enchainer rapidement plusieurs livres différents
+  if (scannedIsbns.value.has(barcode) && (now - lastScanTimestamp.value < 600)) {
+    return;
+  }
+
+  if (!scannedIsbns.value.has(barcode)) {
+    if (navigator.vibrate) navigator.vibrate(50); // Vibreur plus court
+
+    scannedIsbns.value.add(barcode);
+    scannedList.value.push({
+      isbn: barcode,
+      target: defaultTarget.value
+    });
+
+    lastScanTimestamp.value = now;
+  }
+}
+
+function removeItem(index) {
+  const item = scannedList.value[index];
+  if (item) {
+    scannedIsbns.value.delete(item.isbn);
+    scannedList.value.splice(index, 1);
+  }
+}
+
+function clearQueue() {
+  scannedList.value = [];
+  scannedIsbns.value.clear();
+}
+
+function confirmBatch() {
+  emit('batch-add', [...scannedList.value]);
+  close();
 }
 
 async function stopScanner() {
-  if (videoElement) {
-    videoElement.style.transform = 'none';
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(t => t.stop());
+    mediaStream = null;
+  }
+
+  const vElem = isUsingNative.value ? videoRef.value : document.querySelector("#reader-vue video");
+  if (vElem) {
+    vElem.style.transform = 'none';
   }
 
   videoTrack = null;
-  videoElement = null;
-  hasZoomSupport.value = false;
+  isUsingNative.value = false;
 
-  if (html5QrCode && html5QrCode.isScanning) {
+  if (html5QrCode) {
     try {
-      await html5QrCode.stop();
+      if (html5QrCode.isScanning) {
+        await html5QrCode.stop();
+      }
       html5QrCode.clear();
     } catch (e) {
       console.warn("Erreur arrêt scanner :", e);
     }
+    html5QrCode = null;
   }
 }
 
@@ -214,15 +424,25 @@ onUnmounted(() => {
   border-radius: 16px;
   padding: 20px;
   width: 90%;
-  max-width: 450px;
+  max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .scanner-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   color: #fff;
+}
+
+.title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .scanner-header h3 {
@@ -230,43 +450,100 @@ onUnmounted(() => {
   font-size: 1.1rem;
 }
 
+.badge-count {
+  background: #6366f1;
+  color: #fff;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
 .scanner-viewport {
   width: 100%;
+  height: 260px;
   border-radius: 12px;
   overflow: hidden;
   background: #000;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.native-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.15s ease-out;
 }
 
 :deep(#reader-vue video) {
-  transition: transform 0.1s ease-out;
-  object-fit: cover;
+  transition: transform 0.15s ease-out !important;
+  object-fit: cover !important;
+  width: 100% !important;
+  height: 100% !important;
 }
 
-/* 🔘 BARRE DE ZOOM AVEC BOUTONS */
+.camera-error {
+  color: #f87171;
+  text-align: center;
+  padding: 16px;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn-retry {
+  background: #3f3f46;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+/* 🔴 LIGNE ROUGE DE SCAN */
+.laser-line {
+  position: absolute;
+  top: 50%;
+  left: 5%;
+  width: 90%;
+  height: 2px;
+  background: #ef4444;
+  box-shadow: 0 0 10px #ef4444, 0 0 18px #ef4444;
+  z-index: 10;
+  pointer-events: none;
+  animation: scan-anim 1.5s infinite ease-in-out;
+}
+
+@keyframes scan-anim {
+  0% { transform: translateY(-50px); opacity: 0.6; }
+  50% { transform: translateY(50px); opacity: 1; }
+  100% { transform: translateY(-50px); opacity: 0.6; }
+}
+
 .zoom-controls {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 16px;
-  margin-top: 16px;
-  width: 100%;
+  margin-top: 12px;
 }
 
 .btn-zoom {
   background: #27272a;
   border: 1px solid #3f3f46;
   color: #fff;
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-radius: 8px;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-zoom:hover:not(:disabled) {
-  background: #3f3f46;
 }
 
 .btn-zoom:disabled {
@@ -280,6 +557,104 @@ onUnmounted(() => {
   font-weight: 600;
   min-width: 45px;
   text-align: center;
+}
+
+.target-selection {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding: 8px 12px;
+  background: #27272a;
+  border-radius: 8px;
+  color: #d4d4d8;
+  font-size: 0.85rem;
+}
+
+.target-select, .item-target-select {
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.scanned-queue {
+  margin-top: 16px;
+  border-top: 1px solid #27272a;
+  padding-top: 12px;
+}
+
+.queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.queue-header h4 {
+  margin: 0;
+  color: #a1a1aa;
+  font-size: 0.85rem;
+}
+
+.btn-clear {
+  background: none;
+  border: none;
+  color: #71717a;
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.queue-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px 0;
+  max-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.queue-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #27272a;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.barcode-text code {
+  color: #38bdf8;
+  font-family: monospace;
+}
+
+.btn-remove {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn-save {
+  width: 100%;
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-save:hover {
+  background: #4f46e5;
 }
 
 .btn-close {
