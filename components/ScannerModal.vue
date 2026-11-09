@@ -15,6 +15,7 @@
       <!-- Zone Caméra avec Ligne Rouge de Scan -->
       <div id="reader-vue" class="scanner-viewport">
         <video 
+          v-if="isUsingNative"
           ref="videoRef" 
           autoplay 
           playsinline 
@@ -98,7 +99,7 @@ let videoTrack = null;
 let nativeDetector = null;
 let animationFrameId = null;
 let html5QrCode = null;
-let isUsingNative = false;
+const isUsingNative = ref(false);
 
 // Zoom forcé à 2x par défaut
 const zoomValue = ref(2.0);
@@ -155,11 +156,13 @@ async function startNativeScanner() {
       }
     });
 
+    isUsingNative.value = true;
+    await nextTick();
+
     if (videoRef.value) {
       videoRef.value.srcObject = mediaStream;
       await videoRef.value.play();
       videoTrack = mediaStream.getVideoTracks()[0];
-      isUsingNative = true;
 
       applyHardwareZoom();
       processNativeFrame();
@@ -167,12 +170,13 @@ async function startNativeScanner() {
     }
   } catch (err) {
     console.warn("Erreur flux vidéo natif :", err);
+    isUsingNative.value = false;
   }
   return false;
 }
 
 function processNativeFrame() {
-  if (!isUsingNative || !videoRef.value || videoRef.value.readyState !== 4) {
+  if (!isUsingNative.value || !videoRef.value || videoRef.value.readyState !== 4) {
     animationFrameId = requestAnimationFrame(processNativeFrame);
     return;
   }
@@ -189,14 +193,14 @@ function processNativeFrame() {
     })
     .catch(() => {})
     .finally(() => {
-      if (isUsingNative) {
+      if (isUsingNative.value) {
         animationFrameId = requestAnimationFrame(processNativeFrame);
       }
     });
 }
 
 async function startLibraryScanner() {
-  isUsingNative = false;
+  isUsingNative.value = false;
   try {
     const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
 
@@ -294,7 +298,7 @@ function zoomOut() {
 
 function updateZoom() {
   applyHardwareZoom();
-  if (!isUsingNative) {
+  if (!isUsingNative.value) {
     const vElem = document.querySelector("#reader-vue video");
     applyCssZoomToElement(vElem);
   }
@@ -350,13 +354,13 @@ async function stopScanner() {
     mediaStream = null;
   }
 
-  const vElem = isUsingNative ? videoRef.value : document.querySelector("#reader-vue video");
+  const vElem = isUsingNative.value ? videoRef.value : document.querySelector("#reader-vue video");
   if (vElem) {
     vElem.style.transform = 'none';
   }
 
   videoTrack = null;
-  isUsingNative = false;
+  isUsingNative.value = false;
 
   if (html5QrCode && html5QrCode.isScanning) {
     try {

@@ -50,7 +50,7 @@
       </button>
     </form>
 
-    <!-- 📷 MODALE SCANNER VIDÉO EN DIRECT EN CONTINU -->
+    <!-- 📷 MODALE SCANNER VIDÉO EN CONTINU -->
     <div v-if="isScanning" class="scanner-modal" @click.self="stopScanner">
       <div class="scanner-container">
         <div class="scanner-header">
@@ -64,17 +64,25 @@
         </div>
 
         <div class="video-wrapper">
+          <video 
+            ref="nativeVideoRef" 
+            autoplay 
+            playsinline 
+            muted 
+            class="native-video-elem"
+            :style="{ transform: `scale(${scannerZoomValue})`, transformOrigin: 'center center' }"
+          ></video>
           <div id="interactive-scanner" class="scanner-video"></div>
           <div class="laser-line"></div>
         </div>
 
-        <!-- Indicator de recherche API en arrière-plan -->
+        <!-- Indicateur de résolution API -->
         <div v-if="isResolvingApi" class="api-resolving-indicator">
           <span class="spinner"></span> Identification du produit en cours...
         </div>
 
         <!-- Contrôles du zoom vidéo -->
-        <div v-if="hasZoomSupport" class="scanner-zoom-controls">
+        <div class="scanner-zoom-controls">
           <button 
             type="button" 
             class="btn-zoom" 
@@ -94,7 +102,7 @@
           </button>
         </div>
 
-        <!-- Sélection de la destination par défaut pour les scans -->
+        <!-- Choix destination globale -->
         <div class="target-selection">
           <label>Destination des scans :</label>
           <select v-model="defaultBatchTarget" class="target-select">
@@ -103,7 +111,7 @@
           </select>
         </div>
 
-        <!-- Tiroir des éléments identifiés en direct -->
+        <!-- Tiroir des éléments identifiés par l'API -->
         <div v-if="scannedBatch.length > 0" class="scanned-batch-tray">
           <div class="tray-header">
             <h4>Éléments capturés</h4>
@@ -132,7 +140,7 @@
           </button>
         </div>
 
-        <p class="scanner-hint">Balayez les codes EAN/ISBN des tranches sans arrêter la vidéo</p>
+        <p class="scanner-hint">Pointez la caméra vers le code EAN / ISBN sur les tranches</p>
       </div>
     </div>
 
@@ -274,10 +282,16 @@ const query = ref('');
 const loading = ref(false);
 const results = ref([]);
 
-// Continuous Scanning & Batch Storage State
+// Scanner State
 const isScanning = ref(false);
 const fileInputRef = ref(null);
+const nativeVideoRef = ref(null);
+
+let mediaStream = null;
+let nativeDetector = null;
+let animationFrameId = null;
 let html5QrCodeScanner = null;
+let isUsingNative = false;
 
 const scannedBatch = ref([]);
 const scannedCodesSet = ref(new Set());
@@ -285,14 +299,11 @@ const defaultBatchTarget = ref(false); // false = Collection, true = Wishlist
 const isResolvingApi = ref(false);
 const lastScanTimestamp = ref(0);
 
-// Zoom scanner vidéo
-const hasZoomSupport = ref(false);
-const scannerZoomValue = ref(1);
-const scannerZoomMin = ref(1);
-const scannerZoomMax = ref(3);
-let scannerVideoElement = null;
-let scannerVideoTrack = null;
-let isHardwareZoom = false;
+// Zoom vidéo
+const scannerZoomValue = ref(2.0); // Forcé à 2x
+const scannerZoomMin = ref(1.0);
+const scannerZoomMax = ref(4.0);
+let videoTrack = null;
 
 const placeholderText = computed(() => {
   if (searchType.value === 'vinyl') return 'Album, artiste, EAN...';
@@ -347,7 +358,7 @@ function getExistingItem(resItem) {
   }) || null;
 }
 
-// 📷 CLIC BOUTON SCANNER
+// 📷 DÉMARRAGE DU SCANNER
 async function handleScanClick() {
   if (!import.meta.client) return;
 
@@ -358,17 +369,90 @@ async function handleScanClick() {
   }
 }
 
-// 🔴 SCANNER VIDÉO EN DIRECT EN CONTINU AVEC APPEL API AUTOMATIQUE
 async function startLiveScanner() {
   if (!import.meta.client) return;
 
   scannedBatch.value = [];
   scannedCodesSet.value.clear();
   isScanning.value = true;
-  scannerZoomValue.value = 1;
-  hasZoomSupport.value = false;
+  scannerZoomValue.value = 2.0;
   await nextTick();
 
+  // 1. Tente BarcodeDetector Natif
+  if ('BarcodeDetector' in window) {
+    try {
+      const supportedFormats = await window.BarcodeDetector.getSupportedFormats();
+      if (supportedFormats.includes('ean_13') || supportedFormats.includes('code_128')) {
+        const started = await startNativeScanner();
+        if (started) return;
+      }
+    } catch (e) {
+      console.warn("BarcodeDetector natif indisponible, bascule sur html5-qrcode...", e);
+    }
+  }
+
+  // 2. Fallback sur html5-qrcode
+  startLibraryScanner();
+}
+
+// 🟢 SCANNER NATIF (BarcodeDetector API)
+async function startNativeScanner() {
+  try {
+    nativeDetector = new window.BarcodeDetector({
+      formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128']
+    });
+
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { min: 1280, ideal: 1920 },
+        height: { min: 720, ideal: 1080 }
+      }
+    });
+
+    if (nativeVideoRef.value) {
+      nativeVideoRef.value.srcObject = mediaStream;
+      await nativeVideoRef.value.play();
+      videoTrack = mediaStream.getVideoTracks()[0];
+      isUsingNative = true;
+
+      applyHardwareZoom();
+      processNativeFrame();
+      return true;
+    }
+  } catch (err) {
+    console.warn("Erreur flux natif :", err);
+  }
+  return false;
+}
+
+function processNativeFrame() {
+  if (!isUsingNative || !nativeVideoRef.value || nativeVideoRef.value.readyState !== 4) {
+    animationFrameId = requestAnimationFrame(processNativeFrame);
+    return;
+  }
+
+  nativeDetector.detect(nativeVideoRef.value)
+    .then((barcodes) => {
+      if (barcodes.length > 0) {
+        for (const barcode of barcodes) {
+          if (barcode.rawValue) {
+            handleContinuousBarcodeDetect(barcode.rawValue);
+          }
+        }
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      if (isUsingNative) {
+        animationFrameId = requestAnimationFrame(processNativeFrame);
+      }
+    });
+}
+
+// 🟠 FALLBACK BIBLIOTHÈQUE (html5-qrcode)
+async function startLibraryScanner() {
+  isUsingNative = false;
   try {
     const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
 
@@ -380,25 +464,104 @@ async function startLiveScanner() {
       Html5QrcodeSupportedFormats.CODE_128
     ];
 
-    html5QrCodeScanner = new Html5Qrcode("interactive-scanner", { formatsToSupport: formatsSupported });
+    html5QrCodeScanner = new Html5Qrcode("interactive-scanner", { 
+      formatsToSupport: formatsSupported,
+      verbose: false
+    });
+
+    const videoConstraints = {
+      facingMode: "environment",
+      width: { min: 1280, ideal: 1920 },
+      height: { min: 720, ideal: 1080 }
+    };
+
+    const config = {
+      fps: 15,
+      qrbox: (viewfinderWidth, viewfinderHeight) => ({
+        width: Math.floor(viewfinderWidth * 0.9),
+        height: Math.floor(viewfinderHeight * 0.4)
+      }),
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
+      }
+    };
+
     await html5QrCodeScanner.start(
-      { facingMode: "environment" },
-      { fps: 20, qrbox: { width: 260, height: 140 } },
+      videoConstraints,
+      config,
       (decodedText) => handleContinuousBarcodeDetect(decodedText),
       () => {}
     );
 
-    setupScannerZoom();
+    initLibraryZoom();
   } catch (err) {
     stopScanner();
     fileInputRef.value?.click();
   }
 }
 
+function initLibraryZoom() {
+  let attempts = 0;
+  const interval = setInterval(() => {
+    const vElem = document.querySelector("#interactive-scanner video");
+    attempts++;
+
+    if (vElem && vElem.srcObject) {
+      clearInterval(interval);
+      const stream = vElem.srcObject;
+      videoTrack = stream.getVideoTracks()[0];
+      applyHardwareZoom();
+      applyCssZoomToElement(vElem);
+    }
+
+    if (attempts > 20) clearInterval(interval);
+  }, 150);
+}
+
+// 🔍 ZOOM UNIFIÉ
+function applyHardwareZoom() {
+  const factor = parseFloat(scannerZoomValue.value);
+  if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
+    videoTrack.applyConstraints({
+      advanced: [{ zoom: factor }]
+    }).catch(() => {});
+  }
+}
+
+function applyCssZoomToElement(elem) {
+  if (elem) {
+    elem.style.transform = `scale(${scannerZoomValue.value})`;
+    elem.style.transformOrigin = `center center`;
+  }
+}
+
+function zoomScannerIn() {
+  if (scannerZoomValue.value < scannerZoomMax.value) {
+    scannerZoomValue.value = Math.min(parseFloat((scannerZoomValue.value + 0.3).toFixed(1)), scannerZoomMax.value);
+    updateZoom();
+  }
+}
+
+function zoomScannerOut() {
+  if (scannerZoomValue.value > scannerZoomMin.value) {
+    scannerZoomValue.value = Math.max(parseFloat((scannerZoomValue.value - 0.3).toFixed(1)), scannerZoomMin.value);
+    updateZoom();
+  }
+}
+
+function updateZoom() {
+  applyHardwareZoom();
+  if (!isUsingNative) {
+    const vElem = document.querySelector("#interactive-scanner video");
+    applyCssZoomToElement(vElem);
+  }
+}
+
+// 🎯 DÉTECTION EN CONTINU & RÉSOLUTIONS API MULTI-MÉDIAS
 async function handleContinuousBarcodeDetect(barcode) {
   const now = Date.now();
 
-  // Cooldown de 1.5s pour ne pas re-traiter le même code en boucle pendant le survol
+  // Cooldown 1.5s anti-rebond
   if (scannedCodesSet.value.has(barcode) && (now - lastScanTimestamp.value < 1500)) {
     return;
   }
@@ -409,7 +572,6 @@ async function handleContinuousBarcodeDetect(barcode) {
 
     if (navigator.vibrate) navigator.vibrate(80);
 
-    // Résolution API en arrière-plan sans stopper le flux vidéo
     isResolvingApi.value = true;
     try {
       const itemData = await fetchSingleItemByBarcode(barcode, searchType.value);
@@ -420,14 +582,14 @@ async function handleContinuousBarcodeDetect(barcode) {
         });
       }
     } catch (e) {
-      console.warn("Échec résolution API pour barcode:", barcode, e);
+      console.warn("Échec résolution API pour le code-barres :", barcode, e);
     } finally {
       isResolvingApi.value = false;
     }
   }
 }
 
-// 🔍 Fonction de résolution API à l'unité selon le type de média
+// 🌐 RECHERCHE D'ÉLÉMENT PAR CODE-BARRES VIA LES APIS CONCERNÉES
 async function fetchSingleItemByBarcode(code, type) {
   const discogsToken = config.public?.discogsToken || '';
 
@@ -448,7 +610,8 @@ async function fetchSingleItemByBarcode(code, type) {
       };
     }
   } else if (type === 'book') {
-    const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(code)}&limit=1`);
+    // Open Library : recherche par ISBN
+    const res = await fetch(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(code)}&limit=1`);
     const data = await res.json();
     const doc = data.docs?.[0];
     if (doc) {
@@ -497,11 +660,11 @@ async function fetchSingleItemByBarcode(code, type) {
     }
   }
 
-  // Fallback direct si l'API ne renvoie rien
+  // Fallback direct avec le code-barres brut si l'API ne retourne rien
   return {
     id: 'scanned-' + code,
     title: `Code: ${code}`,
-    artist: 'Résultat brut',
+    artist: 'Produit scanné',
     year: '',
     cover: null,
     type: type,
@@ -530,69 +693,24 @@ async function saveAllBatch() {
   stopScanner();
 }
 
-function setupScannerZoom() {
-  if (!import.meta.client) return;
-  let attempts = 0;
-  const interval = setInterval(() => {
-    scannerVideoElement = document.querySelector("#interactive-scanner video");
-    attempts++;
-
-    if (scannerVideoElement && scannerVideoElement.srcObject) {
-      clearInterval(interval);
-      const stream = scannerVideoElement.srcObject;
-      scannerVideoTrack = stream.getVideoTracks()[0];
-
-      const capabilities = scannerVideoTrack?.getCapabilities ? scannerVideoTrack.getCapabilities() : {};
-
-      if (capabilities.zoom) {
-        isHardwareZoom = true;
-        scannerZoomMin.value = capabilities.zoom.min || 1;
-        scannerZoomMax.value = Math.min(capabilities.zoom.max || 4, 4);
-        scannerZoomValue.value = capabilities.zoom.min || 1;
-      } else {
-        isHardwareZoom = false;
-        scannerZoomMin.value = 1;
-        scannerZoomMax.value = 3;
-        scannerZoomValue.value = 1;
-      }
-      hasZoomSupport.value = true;
-    }
-
-    if (attempts > 20) clearInterval(interval);
-  }, 200);
-}
-
-function zoomScannerIn() {
-  if (scannerZoomValue.value < scannerZoomMax.value) {
-    scannerZoomValue.value = Math.min(parseFloat((scannerZoomValue.value + 0.3).toFixed(1)), scannerZoomMax.value);
-    applyScannerZoom();
-  }
-}
-
-function zoomScannerOut() {
-  if (scannerZoomValue.value > scannerZoomMin.value) {
-    scannerZoomValue.value = Math.max(parseFloat((scannerZoomValue.value - 0.3).toFixed(1)), scannerZoomMin.value);
-    applyScannerZoom();
-  }
-}
-
-function applyScannerZoom() {
-  const factor = parseFloat(scannerZoomValue.value);
-  if (isHardwareZoom && scannerVideoTrack) {
-    scannerVideoTrack.applyConstraints({ advanced: [{ zoom: factor }] }).catch(() => {});
-  } else if (scannerVideoElement) {
-    scannerVideoElement.style.transform = `scale(${factor})`;
-    scannerVideoElement.style.transformOrigin = `center center`;
-  }
-}
-
 function stopScanner() {
-  if (scannerVideoElement) {
-    scannerVideoElement.style.transform = 'none';
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
   }
-  scannerVideoElement = null;
-  scannerVideoTrack = null;
-  hasZoomSupport.value = false;
+
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(t => t.stop());
+    mediaStream = null;
+  }
+
+  const vElem = isUsingNative ? nativeVideoRef.value : document.querySelector("#interactive-scanner video");
+  if (vElem) {
+    vElem.style.transform = 'none';
+  }
+
+  videoTrack = null;
+  isUsingNative = false;
 
   if (html5QrCodeScanner && isScanning.value) {
     html5QrCodeScanner.stop().catch(() => {}).finally(() => {
@@ -622,10 +740,6 @@ async function handleFileUpload(event) {
     event.target.value = '';
   }
 }
-
-onUnmounted(() => {
-  stopScanner();
-});
 
 // RECHERCHE MANUELLE MULTI-API
 async function searchApi() {
@@ -764,7 +878,8 @@ async function moveToCollection(existingItem) {
 .badge-count { background: #3b82f6; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
 .btn-close-scanner { background: rgba(255, 255, 255, 0.1); border: none; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; cursor: pointer; }
 
-.video-wrapper { width: 100%; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; background: #000; position: relative; }
+.video-wrapper { width: 100%; height: 260px; border-radius: 12px; overflow: hidden; background: #000; position: relative; }
+.native-video-elem { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.15s ease-out; }
 .scanner-video { width: 100%; height: 100%; }
 
 /* 🔴 Ligne Laser Animée */
@@ -808,7 +923,7 @@ async function moveToCollection(existingItem) {
 .btn-remove-batch { background: none; border: none; color: #71717a; cursor: pointer; padding: 2px 6px; }
 .btn-confirm-batch { background: #3b82f6; color: #fff; border: none; padding: 10px; border-radius: 8px; font-weight: 700; font-size: 0.85rem; cursor: pointer; margin-top: 4px; }
 
-:deep(#interactive-scanner video) { transition: transform 0.1s ease-out; object-fit: cover; }
+:deep(#interactive-scanner video) { transition: transform 0.15s ease-out !important; object-fit: cover !important; width: 100% !important; height: 100% !important; }
 .scanner-zoom-controls { display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; }
 .btn-zoom { background: #27272a; border: 1px solid #3f3f46; color: #fff; padding: 6px 14px; border-radius: 8px; font-weight: 700; font-size: 0.85rem; cursor: pointer; }
 .btn-zoom:disabled { opacity: 0.4; cursor: not-allowed; }
