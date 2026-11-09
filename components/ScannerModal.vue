@@ -23,7 +23,14 @@
           class="native-video"
           :style="{ transform: `scale(${zoomValue})`, transformOrigin: 'center center' }"
         ></video>
-        <div class="laser-line"></div>
+        
+        <!-- Message d'erreur si la caméra ne démarre pas -->
+        <div v-if="errorMessage" class="camera-error">
+          <p>⚠️ {{ errorMessage }}</p>
+          <button class="btn-retry" @click="initScanner">Réessayer</button>
+        </div>
+
+        <div v-else class="laser-line"></div>
       </div>
 
       <!-- Contrôles du Zoom -->
@@ -100,6 +107,7 @@ let nativeDetector = null;
 let animationFrameId = null;
 let html5QrCode = null;
 const isUsingNative = ref(false);
+const errorMessage = ref('');
 
 // Zoom forcé à 2x par défaut
 const zoomValue = ref(2.0);
@@ -115,7 +123,11 @@ watch(() => props.isOpen, async (newVal) => {
   if (newVal) {
     scannedList.value = [];
     scannedIsbns.value.clear();
+    errorMessage.value = '';
+    
+    // Attendre deux ticks d'horloge DOM pour s'assurer que le container v-if existe
     await nextTick();
+    await new Promise(r => setTimeout(r, 50));
     initScanner();
   } else {
     stopScanner();
@@ -124,8 +136,9 @@ watch(() => props.isOpen, async (newVal) => {
 
 async function initScanner() {
   if (!import.meta.client) return;
+  errorMessage.value = '';
 
-  // 1. Tenter le scanner natif (iOS Safari 17+ / Chrome Android)
+  // 1. Tenter BarcodeDetector natif
   if ('BarcodeDetector' in window) {
     try {
       const supportedFormats = await window.BarcodeDetector.getSupportedFormats();
@@ -134,12 +147,12 @@ async function initScanner() {
         if (started) return;
       }
     } catch (e) {
-      console.warn("BarcodeDetector natif indisponible, bascule html5-qrcode...", e);
+      console.warn("BarcodeDetector natif indisponible, passage sur html5-qrcode...", e);
     }
   }
 
-  // 2. Fallback sur html5-qrcode
-  startLibraryScanner();
+  // 2. Fallback html5-qrcode
+  await startLibraryScanner();
 }
 
 async function startNativeScanner() {
@@ -150,9 +163,7 @@ async function startNativeScanner() {
 
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
+        facingMode: { ideal: "environment" }
       }
     });
 
@@ -208,6 +219,16 @@ async function startLibraryScanner() {
   try {
     const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
 
+    // Vérifier l'existence de l'élément conteneur
+    const container = document.getElementById("reader-vue");
+    if (!container) {
+      errorMessage.value = "Conteneur caméra introuvable dans le DOM.";
+      return;
+    }
+
+    // Nettoyage préalable des éléments enfants
+    container.innerHTML = '<div class="laser-line"></div>';
+
     const formatsSupported = [
       Html5QrcodeSupportedFormats.EAN_13,
       Html5QrcodeSupportedFormats.EAN_8,
@@ -216,23 +237,10 @@ async function startLibraryScanner() {
       Html5QrcodeSupportedFormats.CODE_128
     ];
 
-    // Nettoyage préalable du DOM
-    const readerElem = document.getElementById("reader-vue");
-    if (readerElem) {
-      const existingVideos = readerElem.querySelectorAll("video");
-      existingVideos.forEach(v => v.remove());
-    }
-
     html5QrCode = new Html5Qrcode("reader-vue", { 
       formatsToSupport: formatsSupported,
       verbose: false
     });
-
-    const videoConstraints = {
-      facingMode: "environment",
-      width: { ideal: 1920 },
-      height: { ideal: 1080 }
-    };
 
     const config = {
       fps: 15,
@@ -243,7 +251,7 @@ async function startLibraryScanner() {
     };
 
     await html5QrCode.start(
-      videoConstraints,
+      { facingMode: "environment" },
       config,
       (decodedText) => handleContinuousScan(decodedText),
       () => {}
@@ -252,7 +260,11 @@ async function startLibraryScanner() {
     initLibraryZoom();
   } catch (err) {
     console.error("Erreur scanner caméra fallback :", err);
-    // Ne ferme pas le modal brutalement sur simple avertissement caméra
+    if (err?.name === 'NotAllowedError' || err?.toString().includes('Permission')) {
+      errorMessage.value = "Accès à la caméra refusé. Vérifiez vos autorisations.";
+    } else {
+      errorMessage.value = "Impossible d'accéder à la caméra.";
+    }
   }
 }
 
@@ -315,7 +327,6 @@ function updateZoom() {
 function handleContinuousScan(barcode) {
   const now = Date.now();
 
-  // Cooldown de 1.5s entre deux détections du même code
   if (scannedIsbns.value.has(barcode) && (now - lastScanTimestamp.value < 1500)) {
     return;
   }
@@ -455,6 +466,9 @@ onUnmounted(() => {
   overflow: hidden;
   background: #000;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .native-video {
@@ -470,6 +484,27 @@ onUnmounted(() => {
   object-fit: cover !important;
   width: 100% !important;
   height: 100% !important;
+}
+
+.camera-error {
+  color: #f87171;
+  text-align: center;
+  padding: 16px;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn-retry {
+  background: #3f3f46;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
 }
 
 /* 🔴 LIGNE ROUGE DE SCAN */
