@@ -90,9 +90,9 @@ let videoElement = null;
 
 const hasZoomSupport = ref(false);
 const isHardwareZoom = ref(false);
-const zoomValue = ref(1);
+const zoomValue = ref(2); // ⚡ Zoom forcé par défaut à 2x
 const zoomMin = ref(1);
-const zoomMax = ref(3);
+const zoomMax = ref(4);
 
 // Scanner Continu
 const scannedList = ref([]);
@@ -125,11 +125,23 @@ async function startScanner() {
       Html5QrcodeSupportedFormats.CODE_128
     ];
 
-    html5QrCode = new Html5Qrcode("reader-vue", { formatsToSupport: formatsSupported });
+    html5QrCode = new Html5Qrcode("reader-vue", { 
+      formatsToSupport: formatsSupported,
+      verbose: false
+    });
 
     const config = {
-      fps: 20, // Balayage fluide
-      qrbox: { width: 280, height: 140 }
+      fps: 15,
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        // Viseur rectangulaire large adapté aux codes-barres 1D tranches
+        return {
+          width: Math.floor(viewfinderWidth * 0.85),
+          height: Math.floor(viewfinderHeight * 0.35)
+        };
+      },
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true // Utilise l'API matérielle native du mobile
+      }
     };
 
     await html5QrCode.start(
@@ -202,18 +214,21 @@ function setupZoom() {
       const capabilities = videoTrack?.getCapabilities ? videoTrack.getCapabilities() : {};
 
       if (capabilities.zoom) {
+        // Zoom Optique / Matériel (Android Chrome)
         isHardwareZoom.value = true;
         zoomMin.value = capabilities.zoom.min || 1;
         zoomMax.value = Math.min(capabilities.zoom.max || 4, 4);
-        zoomValue.value = capabilities.zoom.min || 1;
+        zoomValue.value = Math.min(2, zoomMax.value); // Forcer 2x
       } else {
+        // Zoom Numérique CSS (iOS / Safari)
         isHardwareZoom.value = false;
         zoomMin.value = 1;
-        zoomMax.value = 3;
-        zoomValue.value = 1;
+        zoomMax.value = 4;
+        zoomValue.value = 2; // Forcer 2x
       }
 
       hasZoomSupport.value = true;
+      applyZoom(); // Apply Initial 2x Zoom immediately
     }
 
     if (attempts > 20) {
