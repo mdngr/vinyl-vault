@@ -24,7 +24,7 @@
           class="search-input"
         />
         
-        <!-- Bouton Scanner : ouvre le modal dédié -->
+        <!-- Bouton Scanner : ouvre la modale dédiée -->
         <button 
           type="button" 
           class="btn-scan-inside" 
@@ -221,38 +221,89 @@ function getExistingItem(resItem) {
   }) || null;
 }
 
-// 📦 TRAITEMENT DES SCANS ENVOYÉS PAR LE MODAL
+// 📦 TRAITEMENT AVEC MULTI-FALLBACK (Open Library + Google Books API)
 async function handleBatchAddFromModal(scannedItems) {
   for (const item of scannedItems) {
     const isWishlist = item.target === 'wishlist';
-    
-    // Si ce n'est qu'un ISBN/code brut, on enrichit via l'API Open Library
-    try {
-      const res = await fetch(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(item.isbn)}&limit=1`);
-      const data = await res.json();
-      const doc = data.docs?.[0];
+    const cleanIsbn = item.isbn.trim().replace(/[- ]/g, '');
+    let bookInfo = null;
 
-      if (doc) {
-        await addItem({
-          title: doc.title,
-          artist: doc.author_name ? doc.author_name.join(', ') : 'Auteur inconnu',
-          year: doc.first_publish_year || null,
-          cover: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : null,
+    try {
+      // 1. Essai Open Library Search API
+      const olRes = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(cleanIsbn)}&limit=1`);
+      const olData = await olRes.json();
+      const olDoc = olData.docs?.[0];
+
+      if (olDoc) {
+        bookInfo = {
+          title: olDoc.title,
+          artist: olDoc.author_name ? olDoc.author_name.join(', ') : 'Auteur inconnu',
+          year: olDoc.first_publish_year || null,
+          cover: olDoc.cover_i ? `https://covers.openlibrary.org/b/id/${olDoc.cover_i}-M.jpg` : null,
           type: 'book',
           detectedFormat: 'paperback'
-        }, isWishlist);
-      } else {
-        await addItem({
-          title: `Livre (${item.isbn})`,
+        };
+      }
+
+      // 2. Fallback Open Library Direct API par ISBN
+      if (!bookInfo) {
+        const directRes = await fetch(`https://openlibrary.org/isbn/${cleanIsbn}.json`);
+        if (directRes.ok) {
+          const directData = await directRes.json();
+          bookInfo = {
+            title: directData.title,
+            artist: 'Auteur inconnu',
+            year: directData.publish_date || null,
+            cover: directData.covers?.[0] ? `https://covers.openlibrary.org/b/id/${directData.covers[0]}-M.jpg` : null,
+            type: 'book',
+            detectedFormat: 'paperback'
+          };
+        }
+      }
+
+      // 3. Fallback Google Books API (très efficace sur les livres FR récents)
+      if (!bookInfo) {
+        const gbRes = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
+        const gbData = await gbRes.json();
+        const gbVolume = gbData.items?.[0]?.volumeInfo;
+
+        if (gbVolume) {
+          const rawCover = gbVolume.imageLinks?.thumbnail || gbVolume.imageLinks?.smallThumbnail;
+          bookInfo = {
+            title: gbVolume.title,
+            artist: gbVolume.authors ? gbVolume.authors.join(', ') : 'Auteur inconnu',
+            year: gbVolume.publishedDate ? gbVolume.publishedDate.split('-')[0] : null,
+            cover: rawCover ? rawCover.replace('http://', 'https://') : null,
+            type: 'book',
+            detectedFormat: 'paperback'
+          };
+        }
+      }
+
+      // 4. Fallback ultime avec l'ISBN brut si aucune API ne répond
+      if (!bookInfo) {
+        bookInfo = {
+          title: `Livre (${cleanIsbn})`,
           artist: 'Auteur inconnu',
           year: null,
           cover: null,
           type: 'book',
           detectedFormat: 'paperback'
-        }, isWishlist);
+        };
       }
+
+      await addItem(bookInfo, isWishlist);
+
     } catch (e) {
-      console.warn("Erreur d'enrichissement ISBN :", item.isbn, e);
+      console.warn("Erreur d'enrichissement pour l'ISBN :", cleanIsbn, e);
+      await addItem({
+        title: `Livre (${cleanIsbn})`,
+        artist: 'Auteur inconnu',
+        year: null,
+        cover: null,
+        type: 'book',
+        detectedFormat: 'paperback'
+      }, isWishlist);
     }
   }
 }
