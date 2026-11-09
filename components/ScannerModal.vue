@@ -14,7 +14,14 @@
 
       <!-- Zone Caméra avec Ligne Rouge de Scan -->
       <div id="reader-vue" class="scanner-viewport">
-        <video ref="videoRef" autoplay playsinline muted class="native-video"></video>
+        <video 
+          ref="videoRef" 
+          autoplay 
+          playsinline 
+          muted 
+          class="native-video"
+          :style="{ transform: `scale(${zoomValue})`, transformOrigin: 'center center' }"
+        ></video>
         <div class="laser-line"></div>
       </div>
 
@@ -93,7 +100,8 @@ let animationFrameId = null;
 let html5QrCode = null;
 let isUsingNative = false;
 
-const zoomValue = ref(2.0); // Zoom forcé à 2x par défaut
+// Zoom forcé à 2x par défaut
+const zoomValue = ref(2.0);
 const zoomMin = ref(1.0);
 const zoomMax = ref(4.0);
 
@@ -116,7 +124,7 @@ watch(() => props.isOpen, async (newVal) => {
 async function initScanner() {
   if (!import.meta.client) return;
 
-  // 1. Tenter le scanner natif Safari / Android (BarcodeDetector API)
+  // 1. Tenter le scanner natif (iOS Safari 17+ / Chrome Android)
   if ('BarcodeDetector' in window) {
     try {
       const supportedFormats = await window.BarcodeDetector.getSupportedFormats();
@@ -125,15 +133,14 @@ async function initScanner() {
         if (started) return;
       }
     } catch (e) {
-      console.warn("Échec d'initialisation du BarcodeDetector natif, bascule sur html5-qrcode...", e);
+      console.warn("BarcodeDetector natif indisponible, bascule html5-qrcode...", e);
     }
   }
 
-  // 2. Fallback sur la bibliothèque html5-qrcode
+  // 2. Fallback sur html5-qrcode
   startLibraryScanner();
 }
 
-// 🟢 MODE 1 : LECTEUR NATIF (BarcodeDetector API)
 async function startNativeScanner() {
   try {
     nativeDetector = new window.BarcodeDetector({
@@ -154,12 +161,12 @@ async function startNativeScanner() {
       videoTrack = mediaStream.getVideoTracks()[0];
       isUsingNative = true;
 
-      applyZoom();
+      applyHardwareZoom();
       processNativeFrame();
       return true;
     }
   } catch (err) {
-    console.warn("Erreur démarrage flux vidéo natif :", err);
+    console.warn("Erreur flux vidéo natif :", err);
   }
   return false;
 }
@@ -188,7 +195,6 @@ function processNativeFrame() {
     });
 }
 
-// 🟠 MODE 2 : FALLBACK BIBLIOTHÈQUE (html5-qrcode)
 async function startLibraryScanner() {
   isUsingNative = false;
   try {
@@ -248,49 +254,56 @@ function initLibraryZoom() {
       clearInterval(interval);
       const stream = vElem.srcObject;
       videoTrack = stream.getVideoTracks()[0];
-      applyZoom();
+      applyHardwareZoom();
+      applyCssZoomToElement(vElem);
     }
 
     if (attempts > 20) clearInterval(interval);
   }, 150);
 }
 
-// 🔍 GESTION DU ZOOM UNIFIÉE
-function applyZoom() {
+function applyHardwareZoom() {
   const factor = parseFloat(zoomValue.value);
-
-  // Zoom matériel WebRTC (Chrome Android)
   if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
     videoTrack.applyConstraints({
       advanced: [{ zoom: factor }]
     }).catch(() => {});
   }
+}
 
-  // Zoom CSS Forcé (iOS Safari)
-  const targetVideo = isUsingNative ? videoRef.value : document.querySelector("#reader-vue video");
-  if (targetVideo) {
-    targetVideo.style.transform = `scale(${factor})`;
-    targetVideo.style.transformOrigin = `center center`;
+function applyCssZoomToElement(elem) {
+  if (elem) {
+    elem.style.transform = `scale(${zoomValue.value})`;
+    elem.style.transformOrigin = `center center`;
   }
 }
 
 function zoomIn() {
   if (zoomValue.value < zoomMax.value) {
     zoomValue.value = Math.min(parseFloat((zoomValue.value + 0.3).toFixed(1)), zoomMax.value);
-    applyZoom();
+    updateZoom();
   }
 }
 
 function zoomOut() {
   if (zoomValue.value > zoomMin.value) {
     zoomValue.value = Math.max(parseFloat((zoomValue.value - 0.3).toFixed(1)), zoomMin.value);
-    applyZoom();
+    updateZoom();
+  }
+}
+
+function updateZoom() {
+  applyHardwareZoom();
+  if (!isUsingNative) {
+    const vElem = document.querySelector("#reader-vue video");
+    applyCssZoomToElement(vElem);
   }
 }
 
 function handleContinuousScan(barcode) {
   const now = Date.now();
 
+  // Cooldown de 1.5s entre deux détections du même code
   if (scannedIsbns.value.has(barcode) && (now - lastScanTimestamp.value < 1500)) {
     return;
   }
@@ -337,9 +350,9 @@ async function stopScanner() {
     mediaStream = null;
   }
 
-  const targetVideo = isUsingNative ? videoRef.value : document.querySelector("#reader-vue video");
-  if (targetVideo) {
-    targetVideo.style.transform = 'none';
+  const vElem = isUsingNative ? videoRef.value : document.querySelector("#reader-vue video");
+  if (vElem) {
+    vElem.style.transform = 'none';
   }
 
   videoTrack = null;
@@ -422,11 +435,11 @@ onUnmounted(() => {
 
 .scanner-viewport {
   width: 100%;
+  height: 260px;
   border-radius: 12px;
   overflow: hidden;
   background: #000;
   position: relative;
-  min-height: 240px;
 }
 
 .native-video {
@@ -444,7 +457,7 @@ onUnmounted(() => {
   height: 100% !important;
 }
 
-/* 🔴 LIGNE ROUGE INTERACTIVE DE SCAN */
+/* 🔴 LIGNE ROUGE DE SCAN */
 .laser-line {
   position: absolute;
   top: 50%;
